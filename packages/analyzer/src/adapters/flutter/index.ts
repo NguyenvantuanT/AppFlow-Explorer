@@ -1,4 +1,5 @@
 import { lookup } from '../shared';
+import { FLUTTER_UI_STATES } from '../uiStateRules';
 import type { Dependency, Evidence, NavigationKind, ScreenKind } from '@appflow/model';
 import { parse as parseYaml } from 'yaml';
 import type { ProjectGraphBuilder } from '../../core/builder';
@@ -115,12 +116,15 @@ export const flutterAdapter: AnalysisAdapter = {
     { kind: 'components', description: 'Buttons, inputs, lists, tabs, images and project widgets used by each screen', confidence: 'medium' },
     { kind: 'assets', description: 'Assets and fonts declared in pubspec.yaml and string references to them', confidence: 'high' },
     { kind: 'entry-points', description: 'MaterialApp home / initialRoute and GoRouter initialLocation', confidence: 'high' },
+    { kind: 'ui-states', description: 'Loading, empty, error, data, authentication, dialog, bottom-sheet and tab states found in each screen\'s code', confidence: 'medium' },
   ],
+  uiStateRules: FLUTTER_UI_STATES,
   limitations: [
     { description: 'Routes produced by onGenerateRoute / onUnknownRoute functions are not evaluated.' },
     { description: 'Route names or paths built at runtime (variables, string interpolation) cannot be resolved and are reported as unresolved.' },
     { description: 'AutoRoute, GetX, Beamer, Fluro and similar routers are reported as unsupported.' },
-    { description: 'Inline dialogs (an AlertDialog built directly in the builder) are not shown as separate screens.' },
+    { description: 'Inline dialogs (an AlertDialog built directly in the builder) are not shown as separate screens; they are listed as dialog UI states of the screen instead.' },
+    { description: 'UI states are found by code patterns inside each screen (and its State class); states built in other widgets or decided by a router redirect are not attributed to the screen.' },
   ],
 
   async detect(ctx) {

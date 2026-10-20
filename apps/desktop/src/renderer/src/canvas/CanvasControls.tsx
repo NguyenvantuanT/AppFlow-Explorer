@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FilterIcon, FitIcon, LayoutIcon } from '../components/icons';
 import { STATUS_META } from '../components/StatusBadge';
 import { useExplorer } from '../store';
+import { motion } from '../lib/a11y';
 import { useFitAll } from './useFitAll';
 
 function ToolButton({ label, onClick, children, disabled, active }: { label: string; onClick: () => void; children: ReactNode; disabled?: boolean; active?: boolean }) {
@@ -10,6 +11,7 @@ function ToolButton({ label, onClick, children, disabled, active }: { label: str
     <button
       type="button"
       title={label}
+      aria-label={label}
       disabled={disabled}
       onClick={onClick}
       aria-pressed={active}
@@ -137,13 +139,15 @@ export function CanvasControls() {
   const layoutStatus = useExplorer((s) => s.layoutStatus);
   const resetLayout = useExplorer((s) => s.resetLayout);
   const filtersActive = useExplorer((s) => JSON.stringify(s.filters) !== JSON.stringify(defaultFilters()));
+  const showMinimap = useExplorer((s) => s.view.showMinimap);
+  const setView = useExplorer((s) => s.setView);
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div className="absolute bottom-4 left-4 z-10">
+    <div className="absolute bottom-4 left-4 z-10" role="toolbar" aria-label="Map controls">
       {menuOpen && <FilterMenu onClose={() => setMenuOpen(false)} />}
       <div className="flex items-center gap-0.5 rounded-lg border border-line bg-panel/95 p-1 shadow-xl backdrop-blur">
-        <ToolButton label="Fit all screens in view" onClick={() => fitAll(300)}>
+        <ToolButton label="Fit all screens in view (F)" onClick={() => fitAll(motion(300))}>
           <FitIcon size={15} /> Fit
         </ToolButton>
         <div className="mx-0.5 h-5 w-px bg-line" />
@@ -161,6 +165,10 @@ export function CanvasControls() {
             {filtersActive && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
           </ToolButton>
         </span>
+        <div className="mx-0.5 h-5 w-px bg-line" />
+        <ToolButton label="Show or hide the minimap (M)" active={showMinimap} onClick={() => void setView({ showMinimap: !showMinimap })}>
+          Minimap
+        </ToolButton>
       </div>
     </div>
   );

@@ -13,6 +13,8 @@ import {
   type OnNodeDrag,
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from '../lib/a11y';
+import { matchShortcut } from '../lib/shortcuts';
 import { useExplorer } from '../store';
 import { AliasNode, type AliasFlowNode } from './AliasNode';
 import { CanvasControls } from './CanvasControls';
@@ -59,6 +61,9 @@ function groupBox(members: LeafNode[]): XY & { width: number; height: number } {
   return { x, y, width: right + GROUP_PADDING.side - x, height: bottom + GROUP_PADDING.bottom - y };
 }
 
+/** Above this many screens and references, only nodes in view are rendered. */
+const LARGE_MAP_NODES = 120;
+
 function CanvasInner() {
   const project = useExplorer((s) => s.project);
   const index = useExplorer((s) => s.index);
@@ -73,6 +78,8 @@ function CanvasInner() {
   const select = useExplorer((s) => s.select);
   const pinNodes = useExplorer((s) => s.pinNodes);
   const resetLayout = useExplorer((s) => s.resetLayout);
+  const showMinimap = useExplorer((s) => s.view.showMinimap);
+  const saveViewport = useExplorer((s) => s.saveViewport);
 
   const rf = useReactFlow<FlowNode, NavFlowEdge>();
   const fitAll = useFitAll();
@@ -97,8 +104,39 @@ function CanvasInner() {
     });
     // Fit only after a full layout; placing new nodes after a correction keeps the view.
     // Bounds come from layout positions, so this does not wait for React Flow to measure nodes.
-    if (relayout && useExplorer.getState().lastLayoutMode !== 'stable') requestAnimationFrame(() => fitAll());
-  }, [graph, index, layoutVersion, fitAll]);
+    // A project reopened from the previous session returns to the view the user left.
+    const mode = useExplorer.getState().lastLayoutMode;
+    if (relayout && mode !== 'stable') {
+      const saved = mode === 'fresh' ? useExplorer.getState().consumeRestoreViewport() : null;
+      requestAnimationFrame(() => (saved ? void rf.setViewport(saved) : fitAll()));
+    }
+  }, [graph, index, layoutVersion, fitAll, rf]);
+
+  // Map shortcuts (the list and the help overlay live in lib/shortcuts.ts).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const id = matchShortcut(e);
+      const s = useExplorer.getState();
+      if (s.paletteOpen || s.reportOpen || s.shortcutsOpen) return;
+      if (id === 'fit') fitAll(motion(300));
+      else if (id === 'zoomIn') void rf.zoomIn({ duration: motion(150) });
+      else if (id === 'zoomOut') void rf.zoomOut({ duration: motion(150) });
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [fitAll, rf]);
+
+  const viewportTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(viewportTimer.current), []);
+  const onMoveEnd = useCallback(
+    (_event: unknown, viewport: { x: number; y: number; zoom: number }) => {
+      clearTimeout(viewportTimer.current);
+      viewportTimer.current = setTimeout(() => saveViewport(viewport), 400);
+    },
+    [saveViewport],
+  );
 
   const visible = useMemo(() => visibleFlow(graph, project, filters), [graph, project, filters]);
   const graphEdgeById = useMemo(() => new Map(graph.edges.map((e) => [e.id, e])), [graph]);
@@ -215,12 +253,12 @@ function CanvasInner() {
       if (!node) return;
       void rf.setCenter(node.position.x + PHONE_NODE_SIZE.width / 2, node.position.y + PHONE_NODE_SIZE.height / 2, {
         zoom: Math.max(rf.getZoom(), 0.85),
-        duration: 450,
+        duration: motion(450),
       });
     } else {
       const edge = graphEdgeById.get(target.id);
       if (!edge) return;
-      void rf.fitView({ nodes: [{ id: edge.source }, { id: edge.target }], padding: 0.35, maxZoom: 1, duration: 450 });
+      void rf.fitView({ nodes: [{ id: edge.source }, { id: edge.target }], padding: 0.35, maxZoom: 1, duration: motion(450) });
     }
   }, [focusRequest, rf, graphEdgeById]);
 
@@ -308,7 +346,7 @@ function CanvasInner() {
   );
 
   return (
-    <div className="relative h-full w-full" data-testid="flow-canvas">
+    <div className="relative h-full w-full" data-testid="flow-canvas" role="region" aria-label="App flow map">
       <ReactFlow<FlowNode, NavFlowEdge>
         nodes={renderNodes}
         edges={edges}
@@ -322,6 +360,8 @@ function CanvasInner() {
         onEdgeClick={(_e, edge) => select({ kind: 'edge', id: edge.id }, { openCode: 'follow' })}
         onEdgeDoubleClick={(_e, edge) => select({ kind: 'edge', id: edge.id }, { openCode: true })}
         onPaneClick={() => select(null)}
+        onMoveEnd={onMoveEnd}
+        onlyRenderVisibleElements={nodes.length > LARGE_MAP_NODES}
         colorMode="dark"
         minZoom={0.05}
         maxZoom={2.5}
@@ -336,15 +376,17 @@ function CanvasInner() {
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1.3} color="#2c3b5e" />
-        <MiniMap<FlowNode>
-          position="bottom-right"
-          nodeColor={minimapColor}
-          nodeBorderRadius={12}
-          style={{ width: 168, height: 112 }}
-          pannable
-          zoomable
-          ariaLabel="Canvas minimap"
-        />
+        {showMinimap && (
+          <MiniMap<FlowNode>
+            position="bottom-right"
+            nodeColor={minimapColor}
+            nodeBorderRadius={12}
+            style={{ width: 168, height: 112 }}
+            pannable
+            zoomable
+            ariaLabel="Canvas minimap"
+          />
+        )}
       </ReactFlow>
 
       <CanvasHeader />

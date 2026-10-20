@@ -1,4 +1,5 @@
 import { lookup } from '../shared';
+import { ANDROID_UI_STATES } from '../uiStateRules';
 import type { Evidence, NavigationKind, ScreenKind, ScreenPlatformKind, WidgetRef } from '@appflow/model';
 import type { ProjectGraphBuilder } from '../../core/builder';
 import { CodeIndex, loc, routeMatcher } from '../../core/codeIndex';
@@ -59,7 +60,9 @@ export const androidAdapter: AnalysisAdapter = {
     { kind: 'components', description: 'Views with ids from layouts used via setContentView / inflate / ViewBinding, and Compose UI calls', confidence: 'medium' },
     { kind: 'handlers', description: 'setOnClickListener-style listeners, Compose onClick lambdas and android:onClick', confidence: 'medium' },
     { kind: 'assets', description: 'drawable, mipmap, font and raw resources with layout, manifest and R.* references', confidence: 'high' },
+    { kind: 'ui-states', description: 'Loading, empty, error, data, authentication, dialog, bottom-sheet and tab states found in each screen\'s code', confidence: 'medium' },
   ],
+  uiStateRules: ANDROID_UI_STATES,
   limitations: [
     { description: 'Implicit intents (actions, URIs) open other apps and are counted, not drawn.' },
     { description: 'Type-safe Compose navigation (navigate(SomeRoute)) and deep links are reported as unsupported.' },

@@ -1,8 +1,9 @@
 import type { AppProject } from '@appflow/model';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentApi, AnalysisInfo } from '../agent/client';
 import { shopliteProject } from '../mock/shoplite/project';
 import { createExplorerStore } from './explorerStore';
+import { loadSession } from './session';
 
 const analyzed: AppProject = {
   id: 'p1',
@@ -29,6 +30,8 @@ function fakeAgent(statuses: AnalysisInfo['status'][], overrides: Partial<AgentA
     getResult: vi.fn(async () => analyzed),
     fileContent: vi.fn(async () => ({ content: 'class Main', hash: 'h1' })),
     openInEditor: vi.fn(async () => ({ ok: true })),
+    changes: vi.fn(async () => ({ analysisId: 'a1', since: '', changed: false, counts: { added: 0, removed: 0, modified: 0 }, added: [], removed: [], modified: [] })),
+    saveFile: vi.fn(async () => ({ ok: true, path: '/docs/demo-app-flow-map.json' })),
     ...overrides,
   };
 }
@@ -274,5 +277,82 @@ describe('explorer store — source-linked exploration', () => {
     await store.getState().ensureFileContent('lib/home.dart');
     await store.getState().reloadFile('lib/home.dart');
     expect(store.getState().fileContents['lib/home.dart']).toEqual({ status: 'ready', content: 'v2', hash: 'h2' });
+  });
+});
+
+describe('explorer store — phase 6 workflow', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('restores the last project, selection, filters and viewport in a new session', async () => {
+    const store = createExplorerStore(shopliteProject, { agent: fakeAgent(['succeeded']), pollMs: 0 });
+    await store.getState().openProjectFolder();
+    store.getState().select({ kind: 'screen', id: 'android:Main' });
+    store.getState().setFilters({ hideIsolated: true });
+    store.getState().saveViewport({ x: 10, y: 20, zoom: 0.5 });
+    expect(loadSession().lastProject).toEqual({ path: '/work/demo-app', name: 'demo-app' });
+
+    const next = createExplorerStore(shopliteProject, { agent: fakeAgent(['succeeded']), pollMs: 0 });
+    await next.getState().openProjectPath(loadSession().lastProject!.path);
+    expect(next.getState().selection).toEqual({ kind: 'screen', id: 'android:Main' });
+    expect(next.getState().filters.hideIsolated).toBe(true);
+    expect(next.getState().consumeRestoreViewport()).toEqual({ x: 10, y: 20, zoom: 0.5 });
+    expect(next.getState().consumeRestoreViewport()).toBeNull();
+  });
+
+  it('drops a saved selection that no longer exists and ignores malformed sessions', async () => {
+    localStorage.setItem('appflow:session:v1', JSON.stringify({ projects: { p1: { selection: { kind: 'screen', id: 'gone' }, filters: { statuses: ['bogus', 'verified'], screenKinds: 'x' } } } }));
+    const store = createExplorerStore(shopliteProject, { agent: fakeAgent(['succeeded']), pollMs: 0 });
+    await store.getState().openProjectFolder();
+    expect(store.getState().selection).toBeNull();
+    expect(store.getState().filters.statuses).toEqual(['verified']);
+    expect(store.getState().filters.screenKinds).toEqual(['page', 'dialog', 'bottomSheet']);
+    localStorage.setItem('appflow:session:v1', '{not json');
+    expect(loadSession()).toEqual({ projects: {} });
+  });
+
+  it('reports source changes and clears them after re-analysis', async () => {
+    const changed = { analysisId: 'a1', since: '', changed: true, counts: { added: 1, removed: 0, modified: 2 }, added: ['lib/new.dart'], removed: [], modified: ['lib/a.dart', 'lib/b.dart'] };
+    const agent = fakeAgent(['succeeded'], { changes: vi.fn(async () => changed) });
+    const store = createExplorerStore(shopliteProject, { agent, pollMs: 0 });
+    await store.getState().checkSourceChanges();
+    expect(agent.changes).not.toHaveBeenCalled(); // nothing analyzed yet
+    await store.getState().openProjectFolder();
+    await store.getState().checkSourceChanges();
+    expect(agent.changes).toHaveBeenCalledWith('p1');
+    expect(store.getState().sourceChanges?.counts).toEqual({ added: 1, removed: 0, modified: 2 });
+    await store.getState().reanalyze();
+    expect(store.getState().sourceChanges).toBeNull();
+
+    (agent.changes as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('agent restarting'));
+    await store.getState().checkSourceChanges();
+    expect(store.getState().sourceChanges).toBeNull();
+  });
+
+  it('exports the map through a save dialog without the absolute project path', async () => {
+    const agent = fakeAgent(['succeeded']);
+    const store = createExplorerStore(shopliteProject, { agent, pollMs: 0 });
+    await store.getState().openProjectFolder();
+    await store.getState().exportMap('json');
+    const request = (agent.saveFile as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { suggestedName: string; content: string; extension: string };
+    expect(request).toMatchObject({ suggestedName: 'demo-app-flow-map.json', extension: 'json' });
+    expect(JSON.parse(request.content).screens[0]).toMatchObject({ id: 'android:Main', position: expect.any(Object) });
+    expect(request.content).not.toContain('/work/demo-app');
+    expect(store.getState().exportStatus).toEqual({ ok: true, message: 'Exported to /docs/demo-app-flow-map.json' });
+
+    await store.getState().exportMap('svg');
+    expect((agent.saveFile as ReturnType<typeof vi.fn>).mock.calls[1]![0]).toMatchObject({ extension: 'svg', content: expect.stringContaining('<svg') });
+
+    (agent.saveFile as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: false, cancelled: true });
+    await store.getState().exportMap('markdown');
+    expect(store.getState().exportStatus).toBeNull();
+  });
+
+  it('toggles the minimap without re-arranging the map', async () => {
+    const store = createExplorerStore(shopliteProject, { agent: fakeAgent(['succeeded']), pollMs: 0 });
+    await store.getState().openProjectFolder();
+    const version = store.getState().layoutVersion;
+    await store.getState().setView({ showMinimap: false });
+    expect(store.getState().view.showMinimap).toBe(false);
+    expect(store.getState().layoutVersion).toBe(version);
   });
 });

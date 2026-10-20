@@ -235,6 +235,26 @@ export interface ScreenState {
   build?: BuildConfig;
 }
 
+/**
+ * A UI state found in source code, e.g. a loading indicator or an error
+ * branch. It says the state exists, not what it looks like: previews only
+ * come from runtime captures (or are labelled mock).
+ */
+export type UiStateKind = 'loading' | 'empty' | 'error' | 'data' | 'auth' | 'dialog' | 'bottomSheet' | 'tabs';
+
+export interface DiscoveredUiState {
+  /** Unique within its screen, e.g. `loading`. */
+  id: string;
+  kind: UiStateKind;
+  /** Short label, e.g. `Loading`. */
+  label: string;
+  /** What in the code shows the state, e.g. `CircularProgressIndicator`. */
+  detail: string;
+  location?: SourceLocation;
+  confidence: Confidence;
+  adapter?: string;
+}
+
 export interface Screen {
   id: string;
   name: string;
@@ -247,6 +267,8 @@ export interface Screen {
   isEntryPoint: boolean;
   keyWidgets: WidgetRef[];
   states: ScreenState[];
+  /** UI states found in source code (loading, empty, error, auth…). */
+  discoveredStates?: DiscoveredUiState[];
   /** Why this was identified as a screen. */
   evidence?: Evidence[];
 }
@@ -358,6 +380,33 @@ export interface AdapterRun {
   durationMs?: number;
 }
 
+/**
+ * A URL that opens the app, declared in platform configuration
+ * (Android intent filters, iOS URL schemes and associated domains).
+ */
+export interface DeepLink {
+  id: string;
+  /** Display pattern, e.g. `https://shop.example.com/product/*` or `shoplite://`. */
+  url: string;
+  scheme: string;
+  host?: string;
+  /** Path or path prefix; a trailing `*` marks a prefix. */
+  path?: string;
+  /**
+   * - `app-link`: verified http(s) link (Android `autoVerify`, iOS associated domain).
+   * - `web-link`: http(s) link without verification.
+   * - `custom-scheme`: app-specific scheme such as `shoplite://`.
+   */
+  kind: 'app-link' | 'web-link' | 'custom-scheme';
+  platform: 'android' | 'ios';
+  /** Screen the link opens; null when it is routed at runtime and cannot be determined. */
+  screenId: string | null;
+  routeId?: string;
+  unresolvedReason?: string;
+  location?: SourceLocation;
+  evidence: Evidence[];
+}
+
 export type ProjectSource = 'mock' | 'analysis';
 
 export interface AppProject {
@@ -378,6 +427,7 @@ export interface AppProject {
   assets?: Asset[];
   warnings?: AnalysisWarning[];
   adapters?: AdapterRun[];
+  deepLinks?: DeepLink[];
   /** Files skipped because they may hold secrets (never read). */
   excludedSensitiveFiles?: number;
 }

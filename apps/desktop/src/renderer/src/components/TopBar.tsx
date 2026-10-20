@@ -1,7 +1,8 @@
 import type { PlatformId } from '@appflow/model';
 import { agentApi } from '../agent/client';
 import { useExplorer } from '../store';
-import { ImportIcon, SearchIcon, SidebarLeftIcon, SidebarRightIcon, WidgetIcon } from './icons';
+import { ExportMenu } from './ExportMenu';
+import { ImportIcon, KeyboardIcon, ReportIcon, SearchIcon, SidebarLeftIcon, SidebarRightIcon, WidgetIcon } from './icons';
 
 const PLATFORM_LABEL: Record<PlatformId, string> = { flutter: 'Flutter', android: 'Android', ios: 'iOS', 'react-native': 'React Native' };
 
@@ -24,12 +25,14 @@ export function TopBar() {
   const rightOpen = useExplorer((s) => s.rightPanelOpen);
   const toggleLeft = useExplorer((s) => s.toggleLeftPanel);
   const toggleRight = useExplorer((s) => s.toggleRightPanel);
+  const setReportOpen = useExplorer((s) => s.setReportOpen);
+  const setShortcutsOpen = useExplorer((s) => s.setShortcutsOpen);
   const isMac = typeof window !== 'undefined' && window.appflow?.platform === 'darwin';
   const showsProject = workspace.status === 'demo' || workspace.status === 'ready' || (workspace.hasResult && workspace.status !== 'welcome');
   const platforms = project.platforms?.length ? project.platforms : [project.framework];
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-4 border-b border-line bg-panel px-4">
+    <header role="banner" className="flex h-12 shrink-0 items-center gap-4 border-b border-line bg-panel px-4">
       <div className="flex items-center gap-2">
         <Logo />
         <span className="text-[15px] font-semibold tracking-tight text-white">AppFlow Explorer</span>
@@ -66,6 +69,7 @@ export function TopBar() {
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
+            aria-label="Search screens, routes and files"
             className="ml-auto flex w-[320px] max-w-[32vw] items-center gap-2 rounded-md border border-line bg-bg px-3 py-1.5 text-left text-muted hover:border-line-strong"
           >
             <SearchIcon size={14} />
@@ -91,8 +95,27 @@ export function TopBar() {
           <>
             <button
               type="button"
+              onClick={() => setReportOpen(true)}
+              title="Coverage and unresolved flows (C)"
+              className="mr-1 flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-[12px] text-ink-2 hover:bg-raised hover:text-ink"
+            >
+              <ReportIcon size={13} /> Report
+            </button>
+            <div className="mr-2">
+              <ExportMenu />
+            </div>
+          </>
+        )}
+        <button type="button" onClick={() => setShortcutsOpen(true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" className="rounded p-1.5 text-muted hover:bg-raised hover:text-ink">
+          <KeyboardIcon size={16} />
+        </button>
+        {showsProject && (
+          <>
+            <button
+              type="button"
               onClick={toggleLeft}
               aria-pressed={leftOpen}
+              aria-label="File explorer"
               title="Toggle file explorer"
               className={`rounded p-1.5 hover:bg-raised ${leftOpen ? 'text-ink' : 'text-muted'}`}
             >
@@ -102,6 +125,7 @@ export function TopBar() {
               type="button"
               onClick={toggleRight}
               aria-pressed={rightOpen}
+              aria-label="Details panel"
               title="Toggle details panel"
               className={`rounded p-1.5 hover:bg-raised ${rightOpen ? 'text-ink' : 'text-muted'}`}
             >

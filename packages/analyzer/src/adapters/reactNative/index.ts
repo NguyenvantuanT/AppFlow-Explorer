@@ -1,4 +1,5 @@
 import { lookup } from '../shared';
+import { REACT_NATIVE_UI_STATES } from '../uiStateRules';
 import type { Dependency, Evidence, NavigationKind, ScreenKind, WidgetRef } from '@appflow/model';
 import type { ProjectGraphBuilder } from '../../core/builder';
 import { CodeIndex, loc, routeMatcher } from '../../core/codeIndex';
@@ -55,7 +56,9 @@ export const reactNativeAdapter: AnalysisAdapter = {
     { kind: 'handlers', description: 'onPress-style JSX props and handle*/on* functions that navigate', confidence: 'medium' },
     { kind: 'assets', description: 'Image files referenced with require(...)', confidence: 'high' },
     { kind: 'modules', description: 'Native modules (ReactContextBaseJavaModule, RCT_EXPORT_MODULE, RCTBridgeModule)', confidence: 'medium' },
+    { kind: 'ui-states', description: 'Loading, empty, error, data, authentication, dialog, bottom-sheet and tab states found in each screen\'s code', confidence: 'medium' },
   ],
+  uiStateRules: REACT_NATIVE_UI_STATES,
   limitations: [
     { description: 'Route names built at runtime and navigation helpers defined outside components are reported as unresolved.' },
     { description: 'Wix React Native Navigation, React Router Native and router-flux are reported as unsupported.' },

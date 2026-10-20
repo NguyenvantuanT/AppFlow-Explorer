@@ -1,3 +1,4 @@
+import { useDialogFocus } from '../lib/a11y';
 import { useRuntime } from '../store';
 import { AlertIcon } from './icons';
 
@@ -5,10 +6,11 @@ import { AlertIcon } from './icons';
 export function ConfirmDialog() {
   const pending = useRuntime((s) => s.pending);
   const cancel = useRuntime((s) => s.cancelConfirmation);
+  const ref = useDialogFocus<HTMLDivElement>(!!pending);
   if (!pending) return null;
   const c = pending.confirmation;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" role="dialog" aria-modal="true" aria-label={pending.title}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" role="dialog" aria-modal="true" aria-label={pending.title} ref={ref} onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), cancel())}>
       <div className="w-[560px] max-w-full rounded-xl border border-line-strong bg-panel p-5 shadow-2xl">
         <div className="flex items-center gap-2 text-[15px] font-semibold text-white">
           <AlertIcon size={16} className="text-warning" /> {pending.title}

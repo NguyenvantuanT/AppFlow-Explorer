@@ -1,9 +1,9 @@
 import { bestEdgeLocation, edgeStatus, featureLabel, featureOf, type AnalysisWarning, type EvidenceSource, type NavigationEdge, type Screen, type SourceLocation } from '@appflow/model';
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Wireframe } from '../canvas/PhoneNode';
 import { CorrectionsOverview, EdgeCorrections, ScreenCorrections } from './Corrections';
 import { RuntimePanel } from './RuntimePanel';
-import { EdgeSourceSection, ScreenStatesSection } from './SourceSections';
+import { DiscoveredStatesSection, EdgeSourceSection, ScreenDeepLinks, ScreenStatesSection } from './SourceSections';
 import { EditorButton } from './CodePanel';
 import { useExplorer } from '../store';
 import { ArrowIcon, CloseIcon, CodeIcon, WidgetIcon } from './icons';
@@ -30,19 +30,18 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export function SourceLink({ location }: { location: SourceLocation }) {
+export function SourceLink({ location, short }: { location: SourceLocation; short?: boolean }) {
   const openCode = useExplorer((s) => s.openCode);
   return (
     <button
       type="button"
       onClick={() => openCode(location)}
       className="group inline-flex max-w-full items-center gap-1 text-left font-mono text-[11.5px] text-primary hover:underline"
-      title="Open in code viewer"
+      title={`Open ${location.fileId}:${location.line} in code viewer`}
+      aria-label={`Open ${location.fileId} line ${location.line}`}
     >
       <CodeIcon size={12} className="shrink-0" />
-      <span className="truncate">
-        {location.fileId}:{location.line}
-      </span>
+      <span className="truncate">{short ? `L${location.line}` : `${location.fileId}:${location.line}`}</span>
     </button>
   );
 }
@@ -86,6 +85,8 @@ function ScreenDetails({ screen }: { screen: Screen }) {
   const moduleName = useExplorer((s) => s.project.modules?.find((m) => m.id === screen.moduleId)?.name);
   const feature = useExplorer((s) => featureLabel(featureOf(screen, s.corrections.featureOverrides)));
   const state = screen.states[0];
+  const allLinks = useExplorer((s) => s.project.deepLinks);
+  const deepLinks = useMemo(() => (allLinks ?? []).filter((d) => d.screenId === screen.id), [allLinks, screen.id]);
 
   return (
     <>
@@ -165,7 +166,17 @@ function ScreenDetails({ screen }: { screen: Screen }) {
         </Field>
       </Section>
 
-      <Section title="UI states" count={screen.states.length}>
+      <Section title="UI states in code" count={screen.discoveredStates?.length ?? 0}>
+        <DiscoveredStatesSection screen={screen} />
+      </Section>
+
+      {deepLinks.length > 0 && (
+        <Section title="Opened by deep links" count={deepLinks.length}>
+          <ScreenDeepLinks links={deepLinks} />
+        </Section>
+      )}
+
+      <Section title="Captured states" count={screen.states.length}>
         <ScreenStatesSection screen={screen} />
       </Section>
 

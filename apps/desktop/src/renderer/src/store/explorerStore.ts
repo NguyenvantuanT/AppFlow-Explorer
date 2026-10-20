@@ -8,7 +8,9 @@ import {
   canvasTargetAt,
   defaultFilters,
   emptyCorrections,
+  exportFlowMap,
   MANUAL_EDGE_PREFIX,
+  type ExportFormat,
   type AppProject,
   type FlowFilters,
   type FlowGraph,
@@ -22,9 +24,12 @@ import {
   type StaleCorrection,
 } from '@appflow/model';
 import { create } from 'zustand';
-import { agentApi, type AgentApi, type EditorId } from '../agent/client';
+import { agentApi, type AgentApi, type EditorId, type SourceChanges } from '../agent/client';
 import { computeAutoLayout, mergeLayout, NODE_SIZES, resolveOverlaps, stabilizeLayout, type Positions, type XY } from '../canvas/layout';
 import { loadCorrections, loadPinnedLayout, loadViewPrefs, saveCorrections, savePinnedLayout, saveViewPrefs, type ViewPrefs } from '../canvas/layoutStorage';
+import { projectSession, rememberLastProject, updateProjectSession, type ProjectSession } from './session';
+
+export type Viewport = NonNullable<ProjectSession['viewport']>;
 
 export type Selection = { kind: 'screen'; id: string } | { kind: 'edge'; id: string } | null;
 
@@ -110,6 +115,13 @@ interface ExplorerState {
   paletteOpen: boolean;
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
+  reportOpen: boolean;
+  shortcutsOpen: boolean;
+  /** Files changed on disk since the shown analysis; null when unknown or unchanged. */
+  sourceChanges: SourceChanges | null;
+  /** Viewport saved in the previous session, applied once by the canvas instead of fitting. */
+  restoreViewport: Viewport | null;
+  exportStatus: { ok: boolean; message: string } | null;
 
   /**
    * Shows an analysis result. Re-analysis of the open project keeps every
@@ -152,6 +164,15 @@ interface ExplorerState {
   /** Re-arranges everything automatically and forgets manual positions. */
   resetLayout(): Promise<void>;
   setPaletteOpen(open: boolean): void;
+  setReportOpen(open: boolean): void;
+  setShortcutsOpen(open: boolean): void;
+  /** Asks the agent whether project files changed since the shown analysis. */
+  checkSourceChanges(): Promise<void>;
+  /** Exports the map as shown (corrections and runtime applied) and saves it where the user picks. */
+  exportMap(format: ExportFormat): Promise<void>;
+  /** Remembers the canvas viewport for the next session. */
+  saveViewport(viewport: Viewport): void;
+  consumeRestoreViewport(): Viewport | null;
   toggleLeftPanel(): void;
   toggleRightPanel(): void;
 
@@ -237,7 +258,9 @@ export function createExplorerStore(initial: AppProject, deps: StoreDeps = { age
       }
       if (info.status === 'succeeded') {
         const project = await agent.getResult(info.id);
-        set((s) => ({ fileContents: {}, workspace: { ...s.workspace, status: 'ready', analysisId: undefined, progress: undefined, hasResult: true } }));
+        set((s) => ({ fileContents: {}, sourceChanges: null, workspace: { ...s.workspace, status: 'ready', analysisId: undefined, progress: undefined, hasResult: true } }));
+        const { projectPath } = get().workspace;
+        if (projectPath) rememberLastProject(projectPath, project.name);
         await get().loadProject(project);
       } else {
         set((s) => ({
@@ -324,6 +347,11 @@ export function createExplorerStore(initial: AppProject, deps: StoreDeps = { age
       paletteOpen: false,
       leftPanelOpen: true,
       rightPanelOpen: true,
+      reportOpen: false,
+      shortcutsOpen: false,
+      sourceChanges: null,
+      restoreViewport: null,
+      exportStatus: null,
 
       async loadProject(project) {
         const prev = get();
@@ -332,17 +360,21 @@ export function createExplorerStore(initial: AppProject, deps: StoreDeps = { age
         const pinned = reanalysis ? prev.pinned : loadPinnedLayout(project.id);
         const runtime = reanalysis ? prev.runtime : noRuntime();
         const derived = derive(project, corrections, runtime, prev.view);
+        // A newly opened project resumes where the previous session left it.
+        const session = reanalysis ? undefined : projectSession(project.id);
+        const wanted = reanalysis ? prev.selection : (session?.selection ?? null);
+        const exists = (sel: Selection) => !!sel && (sel.kind === 'screen' ? derived.index.screensById.has(sel.id) : derived.index.edgesById.has(sel.id));
         set({
           ...derived,
           baseProject: project,
           corrections,
           runtime,
           pinned,
-          filters: reanalysis ? prev.filters : defaultFilters(),
-          selection: reanalysis && prev.selection && (prev.selection.kind === 'screen' ? derived.index.screensById.has(prev.selection.id) : derived.index.edgesById.has(prev.selection.id)) ? prev.selection : null,
+          filters: reanalysis ? prev.filters : (session?.filters ?? defaultFilters()),
+          selection: exists(wanted) ? wanted : null,
           highlightedFileId: null,
           code: reanalysis ? prev.code : null,
-          ...(reanalysis ? {} : { positions: {} }),
+          ...(reanalysis ? {} : { positions: {}, restoreViewport: session?.viewport ?? null, sourceChanges: null }),
         });
         await layout(reanalysis ? 'stable' : 'fresh');
       },
@@ -424,6 +456,7 @@ export function createExplorerStore(initial: AppProject, deps: StoreDeps = { age
               : s.code,
           rightPanelOpen: selection ? true : s.rightPanelOpen,
         }));
+        updateProjectSession(get().baseProject.id, { selection });
       },
 
       openCode(target) {
@@ -497,6 +530,49 @@ export function createExplorerStore(initial: AppProject, deps: StoreDeps = { age
         set({ paletteOpen: open });
       },
 
+      setReportOpen(open) {
+        set({ reportOpen: open });
+      },
+
+      setShortcutsOpen(open) {
+        set({ shortcutsOpen: open });
+      },
+
+      async checkSourceChanges() {
+        const { workspace, project } = get();
+        if (workspace.status !== 'ready' || !workspace.projectId || project.source !== 'analysis') return;
+        try {
+          const changes = await agent.changes(workspace.projectId);
+          // Ignore an answer about another analysis, or one that arrives after a re-analysis started.
+          if (get().workspace.status !== 'ready' || get().workspace.projectId !== workspace.projectId) return;
+          set({ sourceChanges: changes.changed ? changes : null });
+        } catch {
+          // The agent may be restarting; the next check will tell.
+        }
+      },
+
+      async exportMap(format) {
+        const { project, baseProject, corrections, graph, positions } = get();
+        try {
+          const file = exportFlowMap(format, project, { featureOverrides: corrections.featureOverrides, positions, graph, nodeSize: (type) => NODE_SIZES[type] });
+          const slug = baseProject.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'app';
+          const result = await agent.saveFile({ suggestedName: `${slug}-flow-map.${file.extension}`, content: file.content, extension: file.extension });
+          set({ exportStatus: result.cancelled ? null : result.ok ? { ok: true, message: `Exported to ${result.path}` } : { ok: false, message: result.error ?? 'The export could not be saved.' } });
+        } catch (error) {
+          set({ exportStatus: { ok: false, message: error instanceof Error ? error.message : String(error) } });
+        }
+      },
+
+      saveViewport(viewport) {
+        updateProjectSession(get().baseProject.id, { viewport });
+      },
+
+      consumeRestoreViewport() {
+        const viewport = get().restoreViewport;
+        if (viewport) set({ restoreViewport: null });
+        return viewport;
+      },
+
       toggleLeftPanel() {
         set((s) => ({ leftPanelOpen: !s.leftPanelOpen }));
       },
@@ -555,15 +631,22 @@ export function createExplorerStore(initial: AppProject, deps: StoreDeps = { age
 
       setFilters(filters) {
         set((s) => ({ filters: { ...s.filters, ...filters } }));
+        updateProjectSession(get().baseProject.id, { filters: get().filters });
       },
 
       resetFilters() {
         set({ filters: defaultFilters() });
+        updateProjectSession(get().baseProject.id, { filters: get().filters });
       },
 
       async setView(change) {
-        const view = { ...get().view, ...change };
+        const prev = get().view;
+        const view = { ...prev, ...change };
         saveViewPrefs(view);
+        if (view.groupByFeature === prev.groupByFeature && view.collapseSharedTargets === prev.collapseSharedTargets) {
+          set({ view }); // display-only option such as the minimap
+          return;
+        }
         set({ view, ...derive(get().baseProject, get().corrections, get().runtime, view) });
         // Grouping changes the arrangement itself; manual positions are kept.
         await layout('fresh');

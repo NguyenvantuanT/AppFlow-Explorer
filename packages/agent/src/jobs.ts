@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { analyzeProject, type AnalysisAdapter } from '@appflow/analyzer';
 import type { AppProject } from '@appflow/model';
+import { snapshotOf, type Snapshot } from './changes';
 import type { AnalysisInfo } from './schemas';
 
 interface Job {
   info: AnalysisInfo;
   controller: AbortController;
   result?: AppProject;
+  /** Files as they were when the analysis started. */
+  snapshot?: Snapshot;
 }
 
 const MAX_FINISHED_JOBS = 20;
@@ -35,7 +38,7 @@ export class JobManager {
       job.info.status = 'running';
       job.info.startedAt = new Date().toISOString();
       try {
-        const { project } = await analyzeProject(rootPath, {
+        const { project, scanned } = await analyzeProject(rootPath, {
           adapters,
           signal: job.controller.signal,
           onProgress: (p) => {
@@ -43,6 +46,7 @@ export class JobManager {
           },
         });
         job.result = { ...project, id: projectId };
+        job.snapshot = snapshotOf(scanned);
         job.info.status = 'succeeded';
         job.info.summary = {
           screens: project.screens.length,
@@ -67,8 +71,13 @@ export class JobManager {
 
   /** Result of the latest successful analysis of a project. */
   latestResult(projectId: string): AppProject | undefined {
+    return this.latest(projectId)?.result;
+  }
+
+  /** Latest successful analysis job of a project. */
+  latest(projectId: string): Job | undefined {
     const done = [...this.jobs.values()].filter((j) => j.info.projectId === projectId && j.result).sort((a, b) => (b.info.finishedAt ?? '').localeCompare(a.info.finishedAt ?? ''));
-    return done[0]?.result;
+    return done[0];
   }
 
   get(id: string): Job | undefined {

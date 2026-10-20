@@ -93,6 +93,14 @@ Every error has the same shape:
 }
 ```
 
+### Source changes
+
+| Method & path | Body | Response |
+| --- | --- | --- |
+| `GET /v1/projects/:id/changes` | — | `{ analysisId, since, changed, counts: { added, removed, modified }, added[], removed[], modified[] }`, or `409` before the first analysis |
+
+The agent rescans the project and compares the result with the file list recorded when the latest analysis started (size and modification time). If a file's time changed but its size did not, its content is hashed and compared with the analyzed `contentHash`, so touching a file or checking out the same content does not count as an edit. The response contains relative paths only, at most 50 of each kind, and never file contents. Sensitive and ignored files are not scanned, so they never appear. The desktop app polls this endpoint every 15 seconds while the window is visible, and again when the window gains focus.
+
 An adapter that crashes does not fail the analysis. The adapter is reported in `project.adapters` with `status: "failed"`, together with an `adapter-failed` warning, and the other adapters' results are returned.
 
 ### Files

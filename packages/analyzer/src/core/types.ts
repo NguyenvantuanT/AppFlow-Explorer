@@ -2,6 +2,7 @@ import type { AnalysisWarning, Confidence, DetectedFramework, PlatformId } from 
 import type { ProjectFs, ScannedFile } from '../fs/projectFs';
 import type { FileFacts } from '../parsing/facts';
 import type { ProjectGraphBuilder } from './builder';
+import type { UiStateRule } from './uiStates';
 
 export type CapabilityKind =
   | 'modules'
@@ -12,7 +13,9 @@ export type CapabilityKind =
   | 'components'
   | 'handlers'
   | 'assets'
-  | 'entry-points';
+  | 'entry-points'
+  | 'ui-states'
+  | 'deep-links';
 
 /** One thing an adapter can discover, with how far it can be trusted. */
 export interface Capability {
@@ -67,6 +70,8 @@ export interface AnalysisAdapter {
   platform: PlatformId;
   capabilities: Capability[];
   limitations: Limitation[];
+  /** Code patterns of UI states (loading, error, tabs…) for this framework, matched inside each screen it found. */
+  uiStateRules?: UiStateRule[];
   detect(ctx: DetectContext): Promise<DetectionMatch[]>;
   analyze(ctx: AnalysisContext, match: DetectionMatch, out: ProjectGraphBuilder): Promise<void>;
 }

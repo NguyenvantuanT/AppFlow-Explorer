@@ -2,6 +2,8 @@ export { analyzeProject, languageOf, type AnalysisProgress, type AnalysisPhase, 
 export type { AnalysisAdapter, Capability, CapabilityKind, DetectionMatch, Limitation } from './core/types';
 export { ProjectGraphBuilder } from './core/builder';
 export { CodeIndex } from './core/codeIndex';
-export { ProjectFs, AccessDeniedError } from './fs/projectFs';
+export { ProjectFs, AccessDeniedError, type ScannedFile } from './fs/projectFs';
 export { isSensitiveFile } from './fs/sensitive';
 export { defaultAdapters } from './adapters';
+export type { UiStateRule } from './core/uiStates';
+export { FLUTTER_UI_STATES, ANDROID_UI_STATES, IOS_UI_STATES, REACT_NATIVE_UI_STATES } from './adapters/uiStateRules';

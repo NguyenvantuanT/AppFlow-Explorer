@@ -1,5 +1,7 @@
 import { agentApi } from '../agent/client';
+import { useState } from 'react';
 import { useExplorer } from '../store';
+import { forgetLastProject, loadSession } from '../store/session';
 import { ImportIcon, PhoneIcon } from './icons';
 
 const PLATFORMS = [
@@ -13,7 +15,9 @@ export function WelcomeScreen() {
   const openProjectFolder = useExplorer((s) => s.openProjectFolder);
   const loadDemo = useExplorer((s) => s.loadDemo);
   const workspace = useExplorer((s) => s.workspace);
+  const openProjectPath = useExplorer((s) => s.openProjectPath);
   const canOpen = agentApi.available();
+  const [last, setLast] = useState(() => (canOpen ? loadSession().lastProject : undefined));
 
   return (
     <div className="flex h-full items-center justify-center overflow-y-auto bg-canvas p-8" data-testid="welcome">
@@ -47,6 +51,31 @@ export function WelcomeScreen() {
           </button>
         </div>
         {!canOpen && <p className="mt-2 text-[12px] text-muted">Opening folders requires the desktop app.</p>}
+        {last && (
+          <div className="mt-4 flex items-center gap-3 rounded-lg border border-line bg-panel px-4 py-3" data-testid="reopen-last">
+            <div className="min-w-0 flex-1">
+              <div className="text-[12px] text-muted">Last project</div>
+              <div className="truncate text-[13px] font-semibold text-ink">{last.name}</div>
+              <div className="truncate font-mono text-[11px] text-muted" title={last.path}>
+                {last.path}
+              </div>
+            </div>
+            <button type="button" onClick={() => void openProjectPath(last.path)} className="shrink-0 rounded-md bg-primary/15 px-3 py-1.5 text-[12.5px] font-semibold text-primary hover:bg-primary/25">
+              Reopen and analyze
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                forgetLastProject();
+                setLast(undefined);
+              }}
+              aria-label="Forget the last project"
+              className="shrink-0 rounded-md px-2 py-1.5 text-[12px] text-muted hover:bg-raised hover:text-ink"
+            >
+              Forget
+            </button>
+          </div>
+        )}
 
         <div className="mt-8 grid grid-cols-2 gap-3">
           {PLATFORMS.map((p) => (
