@@ -1,8 +1,9 @@
-import { edgeSourceTargets, type NavigationEdge, type Screen, type SourceRole } from '@appflow/model';
+import { edgeSourceTargets, type DeepLink, type NavigationEdge, type Screen, type SourceRole } from '@appflow/model';
 import { useMemo } from 'react';
 import { useExplorer } from '../store';
 import { EditorButton } from './CodePanel';
 import { SourceLink } from './DetailsPanel';
+import { UI_STATE_LABEL } from './ReportPanel';
 
 const ROLE_LABEL: Record<SourceRole, string> = {
   handler: 'Event handler',
@@ -42,6 +43,54 @@ export function EdgeSourceSection({ edge }: { edge: NavigationEdge }) {
             <div className="mt-1 text-[11px] italic text-muted">No source location</div>
           )}
           {t.note && <p className="mt-1 text-[11.5px] leading-snug text-ink-2">{t.note}</p>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * UI states found in the screen's code (loading, empty, error, dialogs…). They
+ * are code patterns, not observed screens: each links to the line it was found on.
+ */
+export function DiscoveredStatesSection({ screen }: { screen: Screen }) {
+  const states = screen.discoveredStates ?? [];
+  if (!states.length) return <p className="text-muted">No loading, empty, error, authentication, dialog or tab states recognized in this screen’s code.</p>;
+  return (
+    <ul className="space-y-1" data-testid="discovered-states">
+      {states.map((st) => (
+        <li key={st.id} className="flex items-center gap-2 rounded px-1 py-0.5">
+          <span className="w-[92px] shrink-0 rounded border border-line px-1.5 py-px text-center text-[11px] text-ink" title={UI_STATE_LABEL[st.kind]}>
+            {st.label}
+          </span>
+          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink-2" title={st.detail}>
+            {st.detail}
+          </span>
+          {st.confidence !== 'high' && <span className="shrink-0 text-[10px] text-muted">{st.confidence}</span>}
+          {st.location && (
+            <span className="shrink-0">
+              <SourceLink location={st.location} short />
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Deep links that open this screen, from platform configuration. */
+export function ScreenDeepLinks({ links }: { links: DeepLink[] }) {
+  return (
+    <ul className="space-y-1.5" data-testid="screen-deep-links">
+      {links.map((d) => (
+        <li key={d.id}>
+          <div className="flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink" title={d.url}>
+              {d.url}
+            </span>
+            <span className="shrink-0 rounded border border-line px-1 text-[10px] text-muted">{d.kind === 'app-link' ? 'App link' : d.kind === 'web-link' ? 'Web link' : 'Scheme'}</span>
+          </div>
+          {d.location && <SourceLink location={d.location} />}
         </li>
       ))}
     </ul>

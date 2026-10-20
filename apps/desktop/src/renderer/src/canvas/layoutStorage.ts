@@ -69,15 +69,17 @@ export function saveCorrections(projectId: string, corrections: GraphCorrections
 export interface ViewPrefs {
   groupByFeature: boolean;
   collapseSharedTargets: boolean;
+  showMinimap: boolean;
 }
 
 export function loadViewPrefs(): ViewPrefs {
-  const defaults: ViewPrefs = { groupByFeature: true, collapseSharedTargets: true };
+  const defaults: ViewPrefs = { groupByFeature: true, collapseSharedTargets: true, showMinimap: true };
   try {
     const p = JSON.parse(localStorage.getItem(viewKey) ?? '{}') as Partial<ViewPrefs>;
     return {
       groupByFeature: typeof p.groupByFeature === 'boolean' ? p.groupByFeature : defaults.groupByFeature,
       collapseSharedTargets: typeof p.collapseSharedTargets === 'boolean' ? p.collapseSharedTargets : defaults.collapseSharedTargets,
+      showMinimap: typeof p.showMinimap === 'boolean' ? p.showMinimap : defaults.showMinimap,
     };
   } catch {
     return defaults;

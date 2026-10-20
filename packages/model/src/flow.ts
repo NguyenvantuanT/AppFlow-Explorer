@@ -260,13 +260,19 @@ const byId = <T extends { id: string }>(a: T, b: T) => (a.id < b.id ? -1 : a.id 
 
 /** Number of navigation steps from the nearest start screen (breadth-first). */
 function distancesFromEntries(entries: Set<string>, edges: NavigationEdge[]): Map<string, number> {
+  const out = new Map<string, NavigationEdge[]>();
+  for (const e of edges) {
+    const list = out.get(e.from);
+    if (list) list.push(e);
+    else out.set(e.from, [e]);
+  }
   const depth = new Map([...entries].map((id) => [id, 0]));
   let frontier = [...entries];
   while (frontier.length) {
     const next: string[] = [];
     for (const id of frontier) {
-      for (const e of edges) {
-        if (e.from !== id || e.to === null || depth.has(e.to)) continue;
+      for (const e of out.get(id) ?? []) {
+        if (e.to === null || depth.has(e.to)) continue;
         depth.set(e.to, depth.get(id)! + 1);
         next.push(e.to);
       }
@@ -302,13 +308,11 @@ export function buildFlowGraph(project: AppProject, options: FlowViewOptions): F
   );
   // For each shared destination, the edge closest to a start screen stays a real line.
   const depth = distancesFromEntries(entryIds, edgesIn);
-  const primaryInto = new Map<string, string>();
+  const primaryInto = new Map<string, NavigationEdge>();
   for (const e of edgesIn) {
     if (e.to === null || !shared.has(e.to) || e.to === e.from) continue;
     const current = primaryInto.get(e.to);
-    const d = depth.get(e.from) ?? Infinity;
-    const currentFrom = current ? edgesIn.find((x) => x.id === current)!.from : undefined;
-    if (current === undefined || d < (depth.get(currentFrom!) ?? Infinity)) primaryInto.set(e.to, e.id);
+    if (current === undefined || (depth.get(e.from) ?? Infinity) < (depth.get(current.from) ?? Infinity)) primaryInto.set(e.to, e);
   }
 
   const edges: FlowGraphEdge[] = [];
@@ -320,7 +324,7 @@ export function buildFlowGraph(project: AppProject, options: FlowViewOptions): F
       target = unresolvedNodeId(e.id);
       nodes.push({ id: target, type: 'unresolved', edgeId: e.id, feature: sourceFeature });
     } else if (shared.has(e.to) && e.to !== e.from) {
-      if (primaryInto.get(e.to) === e.id) {
+      if (primaryInto.get(e.to) === e) {
         target = e.to;
       } else {
         target = aliasNodeId(e.id);
@@ -337,7 +341,9 @@ export function buildFlowGraph(project: AppProject, options: FlowViewOptions): F
   const pairs = new Map<string, FlowGraphEdge[]>();
   for (const e of edges) {
     const key = e.source < e.target ? `${e.source}|${e.target}` : `${e.target}|${e.source}`;
-    pairs.set(key, [...(pairs.get(key) ?? []), e]);
+    const list = pairs.get(key);
+    if (list) list.push(e);
+    else pairs.set(key, [e]);
   }
   for (const list of pairs.values()) {
     list.forEach((e, i) => {
@@ -351,7 +357,9 @@ export function buildFlowGraph(project: AppProject, options: FlowViewOptions): F
     const members = new Map<string, string[]>();
     const screenCount = new Map<string, number>();
     for (const n of nodes) {
-      members.set(n.feature, [...(members.get(n.feature) ?? []), n.id]);
+      const list = members.get(n.feature);
+      if (list) list.push(n.id);
+      else members.set(n.feature, [n.id]);
       if (n.type === 'screen') screenCount.set(n.feature, (screenCount.get(n.feature) ?? 0) + 1);
     }
     // A box around a single screen, or around everything, adds nothing.

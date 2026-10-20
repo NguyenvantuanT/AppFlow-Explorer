@@ -92,6 +92,23 @@ Limitations: Objective-C support covers class declarations and `alloc/init` / `n
 
 Limitations: route names computed at runtime are unresolved. Wix React Native Navigation, React Router Native and router-flux are unsupported. Linking configs are not analyzed.
 
+## UI states and deep links
+
+Besides screens and navigation, every analysis reports two things that show how a screen behaves.
+
+**UI states found in code** (`screen.discoveredStates`) are loading, empty, error, data loading, authentication, dialog, bottom-sheet and tab states. Each adapter declares *patterns* in `uiStateRules` (see [`adapters/uiStateRules.ts`](../packages/analyzer/src/adapters/uiStateRules.ts)). Matching is shared and framework-independent, in [`core/uiStates.ts`](../packages/analyzer/src/core/uiStates.ts):
+
+- Only the screen's own code is searched: its class or function, plus companion classes such as a Flutter `State<HomeScreen>`.
+- Comments and class declarations are skipped, so `class X extends DialogFragment` is not reported as a dialog state.
+- Only the first match of each kind is kept, with its file, line and confidence.
+- A dialog or sheet that is already drawn as a connection from the same call is not reported again.
+
+These are patterns in code, not observed screens. They are shown separately from runtime captures, as "UI states in code" in the details panel and as a "◐ N" badge on the node.
+
+**Deep links** (`project.deepLinks`) are collected from `AndroidManifest.xml` intent filters, `Info.plist` URL types and `*.entitlements` associated domains. A link points to a screen only when its path matches a declared route (`routeForPath`). A link that is routed at runtime keeps `screenId: null` and gets a reason. There is no guessing.
+
+**Supporting another framework.** A new adapter only adds its own list of rules. The canvas, graph, reports and exports read `discoveredStates` and `deepLinks` from the model, so they need no changes.
+
 ## Warning codes
 
 | Code | Severity | Meaning |
@@ -149,4 +166,5 @@ New platforms and routing frameworks plug in **without changing the model or the
 | `flutter_go_router` | Nested GoRoutes, named routes, interpolated locations, unknown and dynamic locations |
 | `android_tasky` | Manifest activities (incl. missing source), nav graph with nested graph and pop-up-to, Safe Args, Kotlin and Java intents, fragment transactions, DialogFragment, Compose NavHost in a feature module, implicit intent, layouts and resources, secrets |
 | `ios_bookshelf` | Storyboard with navigation controllers, segues and identifier-instantiated scenes, UIKit ↔ SwiftUI hosting, NavigationLink and sheet, Objective-C, XIB, `.xcassets`, SPM, unknown segue, secrets |
+| `flutter_states` | Loading, empty, error, data, authentication, bottom sheet and tab states, an inline dialog, a commented-out state, Android app links and a custom scheme, iOS URL types and associated domains |
 | `rn_recipebox` | Stack and tab navigators (nested), modal group, route constants, `reset`, dynamic and undeclared routes, native modules in `android/` and `ios/`, `require()` images, secrets |

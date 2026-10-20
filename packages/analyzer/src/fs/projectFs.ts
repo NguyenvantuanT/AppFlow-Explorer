@@ -11,6 +11,8 @@ export interface ScannedFile {
   /** Project-relative path with forward slashes. */
   path: string;
   sizeBytes: number;
+  /** Last modification time, used to notice edits after an analysis. */
+  mtimeMs?: number;
 }
 
 export interface ScanResult {
@@ -130,7 +132,7 @@ export class ProjectFs {
             return;
           }
           const stat = await fs.stat(path.join(this.root, rel));
-          files.push({ path: rel, sizeBytes: stat.size });
+          files.push({ path: rel, sizeBytes: stat.size, mtimeMs: stat.mtimeMs });
         }
       }
     };

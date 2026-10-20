@@ -94,6 +94,52 @@ Corrections are stored on this computer, per project, separately from the analys
 - **Re-analysis.** Every screen that still exists stays exactly where it was, whether it was placed by hand or automatically. A new screen is placed next to a screen it connects to, then pushed down until it overlaps nothing. Screens that no longer exist are dropped.
 - **Overlaps.** Positions you moved by hand are fixed. Other nodes are moved until they no longer overlap.
 
+## Reports, export and keeping the map current
+
+- **Analysis report** (button **Report**, or `C`). It shows:
+  - coverage: screens, how many are reachable from a start screen, how many have UI states in code or runtime captures, connections by status, resolved deep links, and source files with findings;
+  - every unresolved connection, grouped by cause (dynamic, missing target, unsupported, unknown). Clicking one selects it on the map and opens its code;
+  - screens that cannot be reached from a start screen;
+  - every deep link.
+
+  The report lists counts of real items. There is no overall score.
+- **Export** (button **Export**, or `Ctrl/⌘ E`). Four formats:
+  - JSON (`appflow-map/1`): screens, connections, states, deep links, coverage and canvas positions;
+  - Markdown report;
+  - Mermaid flowchart;
+  - SVG of the map as it is arranged on the canvas.
+
+  Exports never contain file contents or the project's absolute path. You choose the file in a native save dialog. The main process accepts only the four known extensions and at most 64 MB.
+- **Source changes.** While a project is open, the app asks the agent every 15 seconds whether files changed since the analysis. It asks only while the window is visible, and again when the window gains focus. A banner lists what changed and offers **Re-analyze**. Re-analysis keeps the layout and your corrections (see above).
+- **Session.** The app stores the last project, plus each project's selection, filters and viewport, in local storage on this machine (`appflow:session:v1`). Reopening the project restores them. A selection that no longer exists is dropped. **Forget** on the welcome screen removes the last project.
+- **Large projects.** Above 120 nodes, the canvas renders only the elements in view. The minimap can be hidden (`M`).
+
+## Keyboard and accessibility
+
+| Keys | Action |
+| --- | --- |
+| `Ctrl/⌘ K` | Command palette |
+| `?` | Shortcut help |
+| `Ctrl/⌘ E` | Export |
+| `Shift R` | Re-analyze |
+| `C` | Analysis report |
+| `N` | Next unresolved connection |
+| `O` | Open the selection's code |
+| `F` / `=` / `-` | Fit, zoom in, zoom out |
+| `M` | Show or hide the minimap |
+| `Ctrl/⌘ B` / `Ctrl/⌘ Shift B` | Files panel / details panel |
+| `Esc` | Close a dialog, then clear the selection |
+
+The shortcut help is generated from the same table the app uses to handle keys ([`lib/shortcuts.ts`](../apps/desktop/src/renderer/src/lib/shortcuts.ts)). Single-key shortcuts are off while you type in a field.
+
+Accessibility:
+
+- Dialogs keep focus inside while they are open, close with `Esc`, and return focus to where it was.
+- Panels are `nav`, `main` and `aside` landmarks.
+- Icon buttons have labels.
+- The source-changes banner is a live `status` region.
+- Animations are turned off when the system asks for reduced motion.
+
 ## Tests
 
 | File | Covers |
@@ -101,4 +147,8 @@ Corrections are stored on this computer, per project, separately from the analys
 | `packages/model/src/flow.test.ts` | Graph construction (nodes, branches, dialogs, parallel edges, shared destinations, feature boxes, order independence), edge provenance, corrections (hide, resolve, add, line moves, stale), filters, limitations |
 | `packages/model/src/graph.test.ts` | Runtime overlay: single match verifies, ambiguous verifies nothing, no match adds an observed-only edge, idempotent |
 | `apps/desktop/src/renderer/src/canvas/layout.test.ts` | Every node placed, no overlaps, start screen first, features kept apart, deterministic layout, overlap resolution, stability after re-analysis |
-| `apps/desktop/src/renderer/src/store/explorerStore.test.ts` | Re-analysis re-applies corrections and keeps positions, corrections persist across sessions, stale corrections, filters do not re-layout, observed-only edges |
+| `packages/model/src/report.test.ts` | Coverage, unresolved report, JSON/Markdown/Mermaid/SVG export without absolute paths |
+| `packages/agent/src/e2e.test.ts` | End to end over HTTP: analyze `flutter_states`, UI states and deep links, reports, every export format, edit a file, see it in `/changes`, re-analyze |
+| `apps/desktop/src/renderer/src/lib/shortcuts.test.ts` | Shortcut matching, typing in fields, modifiers |
+| `apps/desktop/src/renderer/src/components/Phase6Panels.test.tsx` | Report panel, shortcut help, source-changes banner |
+| `apps/desktop/src/renderer/src/store/explorerStore.test.ts` | Session restore and malformed sessions, source changes, export, minimap without re-layout. Re-analysis re-applies corrections and keeps positions, corrections persist across sessions, stale corrections, filters do not re-layout, observed-only edges |

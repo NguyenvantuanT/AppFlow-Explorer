@@ -1,3 +1,4 @@
+import { buildProjectIndex, type AppProject } from '@appflow/model';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useExplorer } from '../store';
@@ -54,7 +55,25 @@ describe('DetailsPanel', () => {
   it('lists the UI states of a screen', () => {
     act(() => useExplorer.getState().select({ kind: 'screen', id: 'home' }));
     render(<DetailsPanel />);
-    expect(screen.getByText('UI states')).toBeInTheDocument();
+    expect(screen.getByText('Captured states')).toBeInTheDocument();
+    expect(screen.getByText('UI states in code')).toBeInTheDocument();
     expect(screen.getByTestId('screen-states')).toHaveTextContent('Mock illustration');
+  });
+
+  it('lists UI states found in code and the deep links that open a screen', () => {
+    const home = project.screens.find((s) => s.id === 'home')!;
+    const original = useExplorer.getState();
+    act(() => {
+      const next: AppProject = {
+        ...original.project,
+        screens: original.project.screens.map((sc) => (sc.id === 'home' ? { ...sc, discoveredStates: [{ id: 'loading', kind: 'loading', label: 'Loading', detail: 'ConnectionState.waiting', location: { fileId: home.location.fileId, line: 12 }, confidence: 'high' }] } : sc)),
+        deepLinks: [{ id: 'dl1', url: 'shop://home', scheme: 'shop', kind: 'custom-scheme', platform: 'android', screenId: 'home', evidence: [], location: { fileId: 'android/app/src/main/AndroidManifest.xml', line: 9 } }],
+      };
+      useExplorer.setState({ project: next, index: buildProjectIndex(next), selection: { kind: 'screen', id: 'home' } });
+    });
+    render(<DetailsPanel />);
+    expect(screen.getByTestId('discovered-states')).toHaveTextContent('ConnectionState.waiting');
+    expect(screen.getByTestId('screen-deep-links')).toHaveTextContent('shop://home');
+    act(() => useExplorer.setState({ project: original.project, index: original.index }));
   });
 });

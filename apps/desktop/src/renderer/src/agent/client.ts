@@ -19,6 +19,24 @@ export interface AnalysisInfo {
   summary?: { screens: number; edges: number; routes: number; warnings: number; files: number };
 }
 
+/** Files added, removed or edited since the last analysis (paths only, never content). */
+export interface SourceChanges {
+  analysisId: string;
+  since: string;
+  changed: boolean;
+  counts: { added: number; removed: number; modified: number };
+  added: string[];
+  removed: string[];
+  modified: string[];
+}
+
+export interface SaveFileRequest {
+  suggestedName: string;
+  content: string;
+  /** Extension without the dot, used for the save dialog filter. */
+  extension: string;
+}
+
 export class AgentError extends Error {
   constructor(
     readonly status: number,
@@ -40,6 +58,10 @@ export interface AgentApi {
   getResult(analysisId: string): Promise<AppProject>;
   /** A file's current text, and a hash to compare with the one recorded at analysis. */
   fileContent(projectId: string, path: string): Promise<{ content: string; hash?: string }>;
+  /** Source changes since the project's latest finished analysis. */
+  changes(projectId: string): Promise<SourceChanges>;
+  /** Asks where to save an exported file and writes it (desktop app only). */
+  saveFile(request: SaveFileRequest): Promise<{ ok: boolean; path?: string; cancelled?: boolean; error?: string }>;
   /** Opens a project file at a line in a local editor (desktop app only). */
   openInEditor(request: OpenInEditorRequest): Promise<{ ok: boolean; error?: string }>;
 }
@@ -77,6 +99,12 @@ export const agentApi: AgentApi = {
   fileContent: async (projectId, path) => {
     const res = await call<{ content: string; hash?: string }>('GET', `/v1/projects/${projectId}/files/content?path=${encodeURIComponent(path)}`);
     return { content: res.content, hash: res.hash };
+  },
+  changes: async (projectId) => call<SourceChanges>('GET', `/v1/projects/${projectId}/changes`),
+  saveFile: async (request) => {
+    const bridge = window.appflow;
+    if (!bridge?.saveFile) return { ok: false, error: 'Saving files is only available in the desktop app.' };
+    return bridge.saveFile(request);
   },
   openInEditor: async (request) => {
     const bridge = window.appflow;

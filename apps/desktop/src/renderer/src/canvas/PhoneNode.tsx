@@ -113,6 +113,16 @@ export const PhoneNode = memo(function PhoneNode({ data, selected }: NodeProps<P
               </button>
             </div>
           )}
+          {!!screen.discoveredStates?.length && (
+            <span
+              className="absolute right-2 top-2 rounded-full bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white"
+              title={`UI states in code: ${screen.discoveredStates.map((st) => st.label).join(', ')}`}
+              aria-label={`${screen.discoveredStates.length} UI states found in code`}
+              data-testid="node-ui-states"
+            >
+              ◐ {screen.discoveredStates.length}
+            </span>
+          )}
           {state?.provenance === 'mock' && (
             <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-white/80">
               Mock preview

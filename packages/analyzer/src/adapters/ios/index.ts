@@ -1,4 +1,5 @@
 import { lookup } from '../shared';
+import { IOS_UI_STATES } from '../uiStateRules';
 import type { Dependency, Evidence, NavigationKind, ScreenKind, ScreenPlatformKind, WidgetRef } from '@appflow/model';
 import type { ProjectGraphBuilder } from '../../core/builder';
 import { CodeIndex, loc } from '../../core/codeIndex';
@@ -51,7 +52,9 @@ export const iosAdapter: AnalysisAdapter = {
     { kind: 'components', description: 'Storyboard views (buttons, fields, tables), XIB-backed views and SwiftUI controls', confidence: 'medium' },
     { kind: 'handlers', description: '@IBAction methods, SwiftUI Button actions and gesture handlers', confidence: 'medium' },
     { kind: 'assets', description: 'Image sets in .xcassets with UIImage(named:) / Image("…") / storyboard references', confidence: 'high' },
+    { kind: 'ui-states', description: 'Loading, empty, error, data, authentication, dialog, bottom-sheet and tab states found in each screen\'s code', confidence: 'medium' },
   ],
+  uiStateRules: IOS_UI_STATES,
   limitations: [
     { description: 'Objective-C support is limited to class declarations and [[X alloc] init] / [X new] pushes and presents.' },
     { description: 'Coordinators or routers that create controllers in other types are followed only one level through component usage.' },

@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
-import { anchorOf, type AdapterRun, type AppProject, type PlatformId, type SourceFile, type SourceFileKind, type SourceLanguage, type SourceLocation } from '@appflow/model';
+import { anchorOf, type AdapterRun, type NavigationEdge, type AppProject, type PlatformId, type SourceFile, type SourceFileKind, type SourceLanguage, type SourceLocation } from '@appflow/model';
 import { ProjectFs, type ScannedFile } from '../fs/projectFs';
 import { codeLanguageOf, extractFacts, type FileFacts } from '../parsing';
 import { ProjectGraphBuilder } from './builder';
+import { collectDeepLinks } from './deepLinks';
+import { discoverUiStates } from './uiStates';
 import { basename, type AnalysisAdapter, type AnalysisContext, type DetectionMatch, type DetectContext } from './types';
 
 export type AnalysisPhase = 'scanning' | 'detecting' | 'analyzing' | 'assembling' | 'done';
@@ -28,6 +30,8 @@ export interface AnalyzeOptions {
 export interface AnalysisResult {
   project: AppProject;
   durationMs: number;
+  /** Files as scanned when the analysis started (size and modification time), to detect later edits. */
+  scanned: ScannedFile[];
 }
 
 const LANGUAGE_BY_EXT: Record<string, SourceLanguage> = {
@@ -125,6 +129,31 @@ export async function analyzeProject(root: string, options: AnalyzeOptions): Pro
   const maxParseBytes = options.maxParseBytes ?? 1024 * 1024;
   const sizes = new Map(scan.files.map((f) => [f.path, f.sizeBytes]));
   const runs: AdapterRun[] = [];
+  const facts = (path: string): Promise<FileFacts | null> => {
+    let cached = factsCache.get(path);
+    if (!cached) {
+      cached = (async () => {
+        if ((sizes.get(path) ?? 0) > maxParseBytes) {
+          out.warn({ code: 'file-too-large', severity: 'info', message: `Skipped parsing a large file (${path}).`, location: { fileId: path, line: 1 } });
+          return null;
+        }
+        const text = await readText(path);
+        if (text === null) return null;
+        try {
+          const result = await extractFacts(path, text);
+          if (result && result.syntaxErrors > 0) {
+            out.warn({ code: 'parse-errors', severity: 'info', message: `${result.syntaxErrors} syntax error(s) in ${path}; results for this file may be incomplete.`, location: { fileId: path, line: 1 } });
+          }
+          return result;
+        } catch (error) {
+          out.warn({ code: 'parse-failed', severity: 'warning', message: `Could not parse ${path}: ${String(error)}`, location: { fileId: path, line: 1 } });
+          return null;
+        }
+      })();
+      factsCache.set(path, cached);
+    }
+    return cached;
+  };
 
   const ordered = [...matches].sort((a, b) => PRIMARY_ORDER.indexOf(a.platform) - PRIMARY_ORDER.indexOf(b.platform));
   for (let i = 0; i < ordered.length; i++) {
@@ -143,31 +172,7 @@ export async function analyzeProject(root: string, options: AnalyzeOptions): Pro
       matches,
       warn: (w) => out.warn(w),
       progress: (message) => report('analyzing', `${adapter.name}: ${message}`, base + span / 2),
-      facts: (path) => {
-        let cached = factsCache.get(path);
-        if (!cached) {
-          cached = (async () => {
-            if ((sizes.get(path) ?? 0) > maxParseBytes) {
-              out.warn({ code: 'file-too-large', severity: 'info', message: `Skipped parsing a large file (${path}).`, location: { fileId: path, line: 1 } });
-              return null;
-            }
-            const text = await readText(path);
-            if (text === null) return null;
-            try {
-              const facts = await extractFacts(path, text);
-              if (facts && facts.syntaxErrors > 0) {
-                out.warn({ code: 'parse-errors', severity: 'info', message: `${facts.syntaxErrors} syntax error(s) in ${path}; results for this file may be incomplete.`, location: { fileId: path, line: 1 } });
-              }
-              return facts;
-            } catch (error) {
-              out.warn({ code: 'parse-failed', severity: 'warning', message: `Could not parse ${path}: ${String(error)}`, location: { fileId: path, line: 1 } });
-              return null;
-            }
-          })();
-          factsCache.set(path, cached);
-        }
-        return cached;
-      },
+      facts,
     };
 
     const t0 = Date.now();
@@ -184,6 +189,24 @@ export async function analyzeProject(root: string, options: AnalyzeOptions): Pro
     if (existing) existing.status = existing.status === 'failed' || status === 'failed' ? 'failed' : status === 'partial' ? 'partial' : existing.status;
     else runs.push({ id: adapter.id, name: adapter.name, status, capabilities: adapter.capabilities.map((c) => c.description), durationMs: Date.now() - t0 });
   }
+
+  report('assembling', 'Finding UI states and deep links', 91);
+  out.setAdapter('engine');
+  const edgesFrom = new Map<string, NavigationEdge[]>();
+  for (const e of out.edges.values()) edgesFrom.set(e.from, [...(edgesFrom.get(e.from) ?? []), e]);
+  for (const screen of out.screens.values()) {
+    signal?.throwIfAborted();
+    const adapterId = screen.evidence?.find((e) => e.adapter)?.adapter;
+    const adapter = options.adapters.find((a) => a.id === adapterId);
+    if (!adapter?.uiStateRules?.length || !codeLanguageOf(screen.location.fileId)) continue;
+    const text = await readText(screen.location.fileId);
+    if (text === null) continue;
+    const states = discoverUiStates(screen, text, await facts(screen.location.fileId), adapter.uiStateRules, edgesFrom.get(screen.id));
+    if (states.length) screen.discoveredStates = states.map((st) => ({ ...st, adapter: adapter.id }));
+  }
+  const deepLinks = matches.length
+    ? await collectDeepLinks({ files: scan.files, readText, warn: (w) => out.warn(w), screens: [...out.screens.values()], routes: [...out.routes.values()] })
+    : [];
 
   report('assembling', 'Assembling project model', 94);
   const modules = [...out.modules.values()].sort((a, b) => b.path.length - a.path.length);
@@ -215,11 +238,12 @@ export async function analyzeProject(root: string, options: AnalyzeOptions): Pro
     assets: [...out.assets.values()],
     warnings: out.warnings,
     adapters: runs,
+    deepLinks,
     excludedSensitiveFiles: scan.excludedSensitive.length,
   };
   await anchorLocations(project, readText);
   report('done', 'Analysis complete', 100);
-  return { project, durationMs: Date.now() - started };
+  return { project, durationMs: Date.now() - started, scanned: scan.files };
 }
 
 /** Every source location an analysis result points to. */
@@ -230,6 +254,11 @@ export function locationsOf(project: AppProject): SourceLocation[] {
     add(s.location);
     s.keyWidgets.forEach((w) => add(w.location));
     s.evidence?.forEach((e) => add(e.location));
+    s.discoveredStates?.forEach((st) => add(st.location));
+  }
+  for (const d of project.deepLinks ?? []) {
+    add(d.location);
+    d.evidence.forEach((ev) => add(ev.location));
   }
   for (const e of project.edges) {
     add(e.trigger.location);

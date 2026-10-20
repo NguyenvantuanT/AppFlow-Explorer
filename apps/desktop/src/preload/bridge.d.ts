@@ -16,6 +16,8 @@ export interface DesktopBridge {
   };
   /** Opens a project file at a line in a local editor, after the agent checked the path. */
   openInEditor(request: { projectId: string; path: string; line?: number; column?: number; editor: 'vscode' | 'cursor' }): Promise<{ ok: boolean; error?: string }>;
+  /** Shows a save dialog and writes an exported flow map to the chosen path. */
+  saveFile(request: { suggestedName: string; content: string; extension: string }): Promise<{ ok: boolean; path?: string; cancelled?: boolean; error?: string }>;
 }
 
 declare global {

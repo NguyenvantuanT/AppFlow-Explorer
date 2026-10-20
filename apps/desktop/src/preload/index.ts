@@ -11,6 +11,7 @@ const bridge: DesktopBridge = {
     request: (method, path, body) => ipcRenderer.invoke('agent:request', { method, path, body }),
   },
   openInEditor: (request) => ipcRenderer.invoke('editor:open', request),
+  saveFile: (request) => ipcRenderer.invoke('export:save', request),
 };
 
 contextBridge.exposeInMainWorld('appflow', bridge);

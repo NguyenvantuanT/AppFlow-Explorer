@@ -6,6 +6,7 @@ import path from 'node:path';
 import { AccessDeniedError, defaultAdapters, languageOf, ProjectFs, type AnalysisAdapter, type DetectionMatch } from '@appflow/analyzer';
 import type { PlatformId } from '@appflow/model';
 import type { ZodType } from 'zod';
+import { detectChanges } from './changes';
 import { ApiError } from './errors';
 import { JobManager } from './jobs';
 import { OperationGate, spawnRunner, type OperationRunner } from './operations';
@@ -180,6 +181,16 @@ export async function startAgent(options: AgentOptions = {}): Promise<Agent> {
       if (!job) throw new ApiError('not_found', 'Unknown analysis.');
       if (!job.result) throw new ApiError('conflict', `Analysis is ${job.info.status}; no warnings are available yet.`);
       return { body: { warnings: job.result.warnings ?? [] } };
+    }],
+
+    // Whether project files were added, removed or edited since the latest analysis, so the
+    // desktop app can offer a re-analysis. Paths only; no content leaves this process.
+    ['GET', /^\/v1\/projects\/([\w-]+)\/changes$/, async ({ params }) => {
+      const p = project(params[0]!);
+      const job = jobs.latest(p.info.id);
+      if (!job?.snapshot) throw new ApiError('conflict', 'The project has not been analyzed yet.');
+      const changes = await detectChanges(p.fs, job.snapshot, job.result);
+      return { body: { analysisId: job.info.id, since: job.result?.analyzedAt, ...changes } };
     }],
 
     ['GET', /^\/v1\/projects\/([\w-]+)\/files\/content$/, async ({ params, query }) => {

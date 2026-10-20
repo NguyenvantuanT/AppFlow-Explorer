@@ -1,7 +1,9 @@
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { AgentHost, type AgentRequest } from './agentHost';
 import { editorUrl, EDITORS, parseOpenRequest } from './editor';
+import { EXPORT_TYPES, parseSaveRequest } from './exportFile';
 
 const isDev = !app.isPackaged && Boolean(process.env['ELECTRON_RENDERER_URL']);
 const agent = new AgentHost();
@@ -92,6 +94,29 @@ ipcMain.handle('editor:open', async (event, input: unknown) => {
     return { ok: true };
   } catch (error) {
     return { ok: false, error: `Could not open ${EDITORS[req.editor].name}: ${error instanceof Error ? error.message : String(error)}` };
+  }
+});
+
+/**
+ * Saves an exported flow map. The renderer only proposes a name; the user
+ * chooses the destination in a native dialog, so it cannot write elsewhere.
+ */
+ipcMain.handle('export:save', async (event, input: unknown) => {
+  if (!fromOwnWindow(event)) return { ok: false, error: 'Unknown sender.' };
+  const req = parseSaveRequest(input);
+  if (!req) return { ok: false, error: 'Invalid export.' };
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showSaveDialog(win!, {
+    title: 'Export flow map',
+    defaultPath: join(app.getPath('documents'), req.suggestedName),
+    filters: [{ name: EXPORT_TYPES[req.extension], extensions: [req.extension] }],
+  });
+  if (result.canceled || !result.filePath) return { ok: false, cancelled: true };
+  try {
+    await writeFile(result.filePath, req.content, 'utf8');
+    return { ok: true, path: result.filePath };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 });
 

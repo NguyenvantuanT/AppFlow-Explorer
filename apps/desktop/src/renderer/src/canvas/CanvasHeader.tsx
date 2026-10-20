@@ -1,6 +1,6 @@
 import type { EdgeStatus } from '@appflow/model';
 import { useReactFlow, useViewport } from '@xyflow/react';
-import { MinusIcon, PlusIcon } from '../components/icons';
+import { MinimapIcon, MinusIcon, PlusIcon } from '../components/icons';
 import { STATUS_META } from '../components/StatusBadge';
 import { useExplorer } from '../store';
 import { EDGE_COLORS } from './NavEdge';
@@ -11,6 +11,8 @@ const DASH: Record<EdgeStatus, string | undefined> = { verified: undefined, manu
 function ZoomControl() {
   const rf = useReactFlow();
   const { zoom } = useViewport();
+  const showMinimap = useExplorer((s) => s.view.showMinimap);
+  const setView = useExplorer((s) => s.setView);
   return (
     <div className="flex items-center rounded-lg border border-line bg-panel/95 shadow-xl backdrop-blur">
       <button type="button" aria-label="Zoom out" onClick={() => void rf.zoomOut({ duration: 150 })} className="p-2 text-ink-2 hover:text-white">
@@ -26,6 +28,16 @@ function ZoomControl() {
       </button>
       <button type="button" aria-label="Zoom in" onClick={() => void rf.zoomIn({ duration: 150 })} className="p-2 text-ink-2 hover:text-white">
         <PlusIcon size={14} />
+      </button>
+      <button
+        type="button"
+        aria-label="Show or hide the minimap (M)"
+        title="Show or hide the minimap (M)"
+        aria-pressed={showMinimap}
+        onClick={() => void setView({ showMinimap: !showMinimap })}
+        className={`border-l border-line p-2 hover:text-white ${showMinimap ? 'text-ink' : 'text-muted'}`}
+      >
+        <MinimapIcon size={14} />
       </button>
     </div>
   );
