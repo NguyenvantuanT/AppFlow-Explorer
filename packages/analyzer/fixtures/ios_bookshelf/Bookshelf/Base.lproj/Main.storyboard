@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="22505" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="nav-root">
+    <scenes>
+        <!--Navigation Controller-->
+        <scene sceneID="s-nav">
+            <objects>
+                <navigationController id="nav-root" sceneMemberID="viewController">
+                    <connections>
+                        <segue destination="lib-vc" kind="relationship" relationship="rootViewController" id="seg-root"/>
+                    </connections>
+                </navigationController>
+            </objects>
+        </scene>
+        <!--Library-->
+        <scene sceneID="s-lib">
+            <objects>
+                <viewController id="lib-vc" customClass="LibraryViewController" customModule="Bookshelf" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="lib-view">
+                        <subviews>
+                            <tableView clipsSubviews="YES" contentMode="scaleToFill" id="lib-table">
+                                <prototypes>
+                                    <tableViewCell reuseIdentifier="BookCell" id="lib-cell">
+                                        <connections>
+                                            <segue destination="detail-vc" kind="show" identifier="showBook" id="seg-book"/>
+                                        </connections>
+                                    </tableViewCell>
+                                </prototypes>
+                            </tableView>
+                            <imageView image="BookCover" id="lib-empty"/>
+                        </subviews>
+                    </view>
+                    <navigationItem key="navigationItem" title="Library" id="lib-nav">
+                        <barButtonItem key="rightBarButtonItem" title="Add" id="lib-add">
+                            <connections>
+                                <segue destination="add-nav" kind="presentation" id="seg-add"/>
+                            </connections>
+                        </barButtonItem>
+                    </navigationItem>
+                </viewController>
+            </objects>
+        </scene>
+        <!--Book Detail-->
+        <scene sceneID="s-detail">
+            <objects>
+                <viewController id="detail-vc" customClass="BookDetailViewController" customModule="Bookshelf" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="detail-view">
+                        <subviews>
+                            <button opaque="NO" contentMode="scaleToFill" id="detail-read">
+                                <state key="normal" title="Start reading"/>
+                            </button>
+                            <button opaque="NO" contentMode="scaleToFill" id="detail-author">
+                                <state key="normal" title="About the author"/>
+                                <connections>
+                                    <segue destination="author-vc" kind="show" identifier="showAuthor" id="seg-author"/>
+                                </connections>
+                            </button>
+                        </subviews>
+                    </view>
+                </viewController>
+            </objects>
+        </scene>
+        <!--Author (no custom class)-->
+        <scene sceneID="s-author">
+            <objects>
+                <viewController title="Author" id="author-vc" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="author-view"/>
+                </viewController>
+            </objects>
+        </scene>
+        <!--Reader, instantiated from code-->
+        <scene sceneID="s-reader">
+            <objects>
+                <viewController storyboardIdentifier="ReaderViewController" id="reader-vc" customClass="ReaderViewController" customModule="Bookshelf" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="reader-view"/>
+                </viewController>
+            </objects>
+        </scene>
+        <!--Add Book, presented in its own navigation controller-->
+        <scene sceneID="s-add-nav">
+            <objects>
+                <navigationController id="add-nav" sceneMemberID="viewController">
+                    <connections>
+                        <segue destination="add-vc" kind="relationship" relationship="rootViewController" id="seg-add-root"/>
+                    </connections>
+                </navigationController>
+            </objects>
+        </scene>
+        <scene sceneID="s-add">
+            <objects>
+                <viewController id="add-vc" customClass="AddBookViewController" customModule="Bookshelf" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="add-view">
+                        <subviews>
+                            <textField opaque="NO" placeholder="Title" id="add-title"/>
+                            <button opaque="NO" contentMode="scaleToFill" id="add-save">
+                                <state key="normal" title="Save"/>
+                            </button>
+                        </subviews>
+                    </view>
+                </viewController>
+            </objects>
+        </scene>
+    </scenes>
+</document>

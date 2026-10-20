@@ -1,0 +1,20 @@
+{
+  "name": "@appflow/analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Platform-independent static analysis core with per-platform adapters.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@appflow/model": "*",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.25.10",
+    "yaml": "^2.9.1"
+  }
+}

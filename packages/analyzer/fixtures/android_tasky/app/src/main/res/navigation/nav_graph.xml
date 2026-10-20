@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/taskList">
+
+    <fragment
+        android:id="@+id/taskList"
+        android:name="com.example.tasky.ui.TaskListFragment"
+        android:label="Tasks">
+        <action
+            android:id="@+id/action_taskList_to_taskDetail"
+            app:destination="@id/taskDetail" />
+        <action
+            android:id="@+id/action_taskList_to_editTask"
+            app:destination="@id/edit_flow" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/taskDetail"
+        android:name="com.example.tasky.ui.TaskDetailFragment"
+        android:label="Task">
+        <argument android:name="taskId" app:argType="string" />
+        <action
+            android:id="@+id/action_taskDetail_to_editTask"
+            app:destination="@id/editTask" />
+    </fragment>
+
+    <navigation
+        android:id="@+id/edit_flow"
+        app:startDestination="@id/editTask">
+        <fragment
+            android:id="@+id/editTask"
+            android:name="com.example.tasky.ui.EditTaskFragment"
+            android:label="Edit task">
+            <action
+                android:id="@+id/action_editTask_done"
+                app:destination="@id/taskList"
+                app:popUpTo="@id/nav_graph"
+                app:popUpToInclusive="true" />
+        </fragment>
+    </navigation>
+</navigation>

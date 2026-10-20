@@ -1,0 +1,11 @@
+name: trail_notes
+description: go_router navigation patterns.
+version: 0.3.0
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  go_router: ^14.2.0

@@ -1,0 +1,15 @@
+{
+  "name": "recipe-box",
+  "version": "1.2.0",
+  "private": true,
+  "dependencies": {
+    "@react-navigation/bottom-tabs": "^7.0.0",
+    "@react-navigation/native": "^7.0.0",
+    "@react-navigation/native-stack": "^7.0.0",
+    "react": "18.2.0",
+    "react-native": "0.74.3"
+  },
+  "devDependencies": {
+    "typescript": "5.4.5"
+  }
+}

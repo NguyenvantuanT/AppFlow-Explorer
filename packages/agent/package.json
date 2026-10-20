@@ -1,0 +1,19 @@
+{
+  "name": "@appflow/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local developer agent: scans selected project directories and serves analysis results over a loopback HTTP API.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@appflow/analyzer": "*",
+    "@appflow/model": "*",
+    "zod": "^4.6.7"
+  }
+}
