@@ -1,0 +1,110 @@
+@import 'tailwindcss';
+@import '@xyflow/react/dist/style.css';
+
+@theme {
+  --color-bg: #0a0f1c;
+  --color-canvas: #0b1222;
+  --color-panel: #0f1729;
+  --color-panel-2: #131d33;
+  --color-raised: #18233d;
+  --color-line: #1f2b45;
+  --color-line-strong: #2b3a5c;
+  --color-ink: #e6ebf5;
+  --color-ink-2: #aab4c8;
+  --color-muted: #6b7792;
+  --color-primary: #3b82f6;
+  --color-primary-soft: #1d3a6e;
+  --color-inferred: #7c93c3;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+
+  --font-sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* ---- React Flow theming ---- */
+.react-flow {
+  --xy-background-color: var(--color-canvas);
+  --xy-minimap-background-color: var(--color-panel);
+  --xy-minimap-mask-background-color: rgb(5 9 18 / 0.65);
+  --xy-minimap-node-background-color: var(--color-line-strong);
+  --xy-edge-label-background-color: var(--color-panel);
+}
+
+.react-flow__node {
+  transition: opacity 160ms ease;
+}
+
+.react-flow__node.is-dimmed,
+.react-flow__edge.is-dimmed {
+  opacity: 0.28;
+}
+
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--color-canvas);
+  background: var(--color-line-strong);
+}
+
+.react-flow__minimap {
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* ---- Code viewer (highlight.js tokens) ---- */
+.code-view .hljs-keyword,
+.code-view .hljs-built_in {
+  color: #c792ea;
+}
+.code-view .hljs-type,
+.code-view .hljs-title.class_ {
+  color: #82aaff;
+}
+.code-view .hljs-title.function_ {
+  color: #7fdbca;
+}
+.code-view .hljs-string,
+.code-view .hljs-subst {
+  color: #c3e88d;
+}
+.code-view .hljs-number,
+.code-view .hljs-literal {
+  color: #f78c6c;
+}
+.code-view .hljs-comment {
+  color: #5c6a85;
+  font-style: italic;
+}
+.code-view .hljs-meta,
+.code-view .hljs-attr {
+  color: #ffcb6b;
+}

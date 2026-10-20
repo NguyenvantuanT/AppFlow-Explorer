@@ -1,0 +1,14 @@
+{
+  "name": "@appflow/model",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Normalized data model for screens, UI states, source locations and navigation edges.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  }
+}

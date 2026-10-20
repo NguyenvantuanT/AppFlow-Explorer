@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vite/client"],
+    "paths": { "@renderer/*": ["./src/renderer/src/*"] }
+  },
+  "include": ["src/renderer/src", "src/preload/*.d.ts"]
+}

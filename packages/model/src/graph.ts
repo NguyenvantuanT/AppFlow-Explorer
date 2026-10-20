@@ -1,0 +1,145 @@
+import type {
+  AppProject,
+  EdgeStatus,
+  NavigationEdge,
+  RuntimeCapture,
+  RuntimeObservation,
+  Screen,
+  ScreenState,
+  SourceFile,
+  SourceLocation,
+} from './types';
+
+/**
+ * Status is derived from evidence so that a static-only relationship can never
+ * be displayed as verified.
+ */
+export function edgeStatus(edge: NavigationEdge): EdgeStatus {
+  if (edge.to === null) return 'unresolved';
+  if (edge.evidence.some((e) => e.source === 'runtime')) return 'verified';
+  if (edge.evidence.some((e) => e.source === 'declared')) return 'declared';
+  if (edge.evidence.some((e) => e.source === 'static')) return 'inferred';
+  return 'unresolved';
+}
+
+export interface ProjectIndex {
+  screensById: Map<string, Screen>;
+  filesById: Map<string, SourceFile>;
+  edgesById: Map<string, NavigationEdge>;
+  incoming: Map<string, NavigationEdge[]>;
+  outgoing: Map<string, NavigationEdge[]>;
+  screensByFile: Map<string, Screen[]>;
+  statusCounts: Record<EdgeStatus, number>;
+}
+
+function push<K, V>(map: Map<K, V[]>, key: K, value: V): void {
+  const list = map.get(key);
+  if (list) list.push(value);
+  else map.set(key, [value]);
+}
+
+export function buildProjectIndex(project: AppProject): ProjectIndex {
+  const screensById = new Map(project.screens.map((s) => [s.id, s]));
+  const filesById = new Map(project.files.map((f) => [f.id, f]));
+  const edgesById = new Map(project.edges.map((e) => [e.id, e]));
+  const incoming = new Map<string, NavigationEdge[]>();
+  const outgoing = new Map<string, NavigationEdge[]>();
+  const screensByFile = new Map<string, Screen[]>();
+  const statusCounts: Record<EdgeStatus, number> = { verified: 0, declared: 0, inferred: 0, unresolved: 0 };
+
+  for (const screen of project.screens) push(screensByFile, screen.location.fileId, screen);
+  for (const edge of project.edges) {
+    push(outgoing, edge.from, edge);
+    if (edge.to !== null) push(incoming, edge.to, edge);
+    statusCounts[edgeStatus(edge)] += 1;
+  }
+
+  return { screensById, filesById, edgesById, incoming, outgoing, screensByFile, statusCounts };
+}
+
+/**
+ * Overlays runtime captures and observed transitions on an analyzed project:
+ * - each screen with an assigned capture gets a `runtime` state (latest first);
+ * - an observed transition adds `runtime` evidence to the edge between the two
+ *   screens only when exactly one such edge exists — an ambiguous observation
+ *   never verifies a guessed edge, and no edge is ever created from it.
+ */
+export function applyRuntime(
+  project: AppProject,
+  captures: RuntimeCapture[],
+  observations: RuntimeObservation[],
+  imageUri: (capture: RuntimeCapture) => string | undefined,
+): AppProject {
+  const byScreen = new Map<string, RuntimeCapture[]>();
+  for (const c of captures) if (c.screenId) push(byScreen, c.screenId, c);
+  const screens = project.screens.map((s) => {
+    const list = (byScreen.get(s.id) ?? []).sort((a, b) => b.capturedAt.localeCompare(a.capturedAt));
+    if (!list.length) return s;
+    const runtime: ScreenState[] = list.map((c, i) => ({
+      id: `${s.id}:capture:${c.id}`,
+      label: i === 0 ? 'Captured' : `Capture ${list.length - i}`,
+      provenance: 'runtime',
+      captureId: c.id,
+      build: c.build,
+      screenshot: { uri: imageUri(c) ?? '', width: c.width, height: c.height, capturedAt: c.capturedAt, device: c.device.name, pixelRatio: c.pixelRatio },
+    }));
+    return { ...s, states: [...runtime, ...s.states.filter((st) => st.provenance !== 'runtime')] };
+  });
+  const edges = project.edges.map((e) => ({ ...e, evidence: e.evidence.filter((ev) => ev.source !== 'runtime') }));
+  for (const o of observations) {
+    const matching = edges.filter((e) => e.from === o.fromScreenId && e.to === o.toScreenId);
+    if (matching.length !== 1) continue;
+    const ev = matching[0]!.evidence;
+    if (!ev.some((x) => x.source === 'runtime')) {
+      ev.push({ source: 'runtime', detail: 'Transition observed while the app was running', observedAt: o.observedAt, confidence: 'high' });
+    }
+  }
+  return { ...project, screens, edges };
+}
+
+/** Returns human-readable integrity problems; an empty list means the project is consistent. */
+export function validateProject(project: AppProject): string[] {
+  const issues: string[] = [];
+  const fileIds = new Set(project.files.map((f) => f.id));
+  const screenIds = new Set<string>();
+  const edgeIds = new Set<string>();
+
+  const checkLocation = (where: string, loc: SourceLocation | undefined) => {
+    if (!loc) return;
+    if (!fileIds.has(loc.fileId)) issues.push(`${where}: unknown file "${loc.fileId}"`);
+    if (loc.line < 1) issues.push(`${where}: invalid line ${loc.line}`);
+  };
+
+  for (const screen of project.screens) {
+    if (screenIds.has(screen.id)) issues.push(`Duplicate screen id "${screen.id}"`);
+    screenIds.add(screen.id);
+    checkLocation(`Screen "${screen.id}"`, screen.location);
+    for (const widget of screen.keyWidgets) {
+      checkLocation(`Widget "${widget.name}" of "${screen.id}"`, widget.location);
+    }
+  }
+
+  for (const edge of project.edges) {
+    if (edgeIds.has(edge.id)) issues.push(`Duplicate edge id "${edge.id}"`);
+    edgeIds.add(edge.id);
+    if (!screenIds.has(edge.from)) issues.push(`Edge "${edge.id}": unknown source "${edge.from}"`);
+    if (edge.to !== null && !screenIds.has(edge.to)) {
+      issues.push(`Edge "${edge.id}": unknown target "${edge.to}"`);
+    }
+    checkLocation(`Edge "${edge.id}" trigger`, edge.trigger.location);
+    for (const ev of edge.evidence) checkLocation(`Edge "${edge.id}" evidence`, ev.location);
+  }
+
+  for (const route of project.routes ?? []) {
+    if (route.screenId !== null && !screenIds.has(route.screenId)) {
+      issues.push(`Route "${route.id}": unknown screen "${route.screenId}"`);
+    }
+    checkLocation(`Route "${route.id}"`, route.location);
+  }
+  for (const asset of project.assets ?? []) {
+    for (const loc of asset.referencedFrom) checkLocation(`Asset "${asset.id}" reference`, loc);
+  }
+  for (const warning of project.warnings ?? []) checkLocation(`Warning "${warning.id}"`, warning.location);
+
+  return issues;
+}
