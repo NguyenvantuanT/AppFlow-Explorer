@@ -152,7 +152,7 @@ function CanvasInner() {
           className: related && !emphasized ? 'is-dimmed' : undefined,
           markerEnd: {
             type: MarkerType.ArrowClosed,
-            color: isSelected ? '#60a5fa' : EDGE_COLORS[status],
+            color: isSelected ? '#93c5fd' : EDGE_COLORS[status],
             width: 16,
             height: 16,
           },
@@ -216,7 +216,7 @@ function CanvasInner() {
     (node: FlowNode) => {
       if (node.type === 'unresolved') return '#f59e0b';
       if (selection?.kind === 'screen' && selection.id === node.id) return '#3b82f6';
-      return node.data.screen.isEntryPoint ? '#22c55e' : '#33456b';
+      return node.data.screen.isEntryPoint ? '#22c55e' : '#6b82b8';
     },
     [selection],
   );
@@ -246,7 +246,7 @@ function CanvasInner() {
         nodesConnectable={false}
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={22} size={1.3} color="#1d2945" />
+        <Background variant={BackgroundVariant.Dots} gap={22} size={1.3} color="#2c3b5e" />
         <MiniMap<FlowNode>
           position="bottom-right"
           nodeColor={minimapColor}

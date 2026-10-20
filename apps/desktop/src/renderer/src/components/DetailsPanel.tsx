@@ -218,7 +218,7 @@ const PLATFORM_KIND_LABEL: Record<NonNullable<Screen['platformKind']>, string> =
 };
 
 function EvidenceTag({ source }: { source: 'runtime' | 'declared' | 'static' }) {
-  const style = source === 'runtime' ? 'bg-primary/15 text-primary' : source === 'declared' ? 'bg-[#a78bfa]/15 text-[#a78bfa]' : 'bg-inferred/15 text-inferred';
+  const style = source === 'runtime' ? 'bg-primary/15 text-primary' : source === 'declared' ? 'bg-[#c4b5fd]/15 text-[#c4b5fd]' : 'bg-inferred/15 text-inferred';
   return <span className={`shrink-0 rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${style}`}>{source === 'runtime' ? 'Runtime' : source === 'declared' ? 'Config' : 'Code'}</span>;
 }
 
@@ -258,7 +258,7 @@ function EdgeDetails({ edge }: { edge: NavigationEdge }) {
           </p>
         )}
         {status === 'declared' && (
-          <p className="mt-2 rounded-md border border-[#a78bfa]/30 bg-[#a78bfa]/10 px-2.5 py-2 text-[12px] leading-relaxed text-ink-2">
+          <p className="mt-2 rounded-md border border-[#c4b5fd]/30 bg-[#c4b5fd]/10 px-2.5 py-2 text-[12px] leading-relaxed text-ink-2">
             Declared in the project&apos;s navigation configuration. It has <strong className="text-ink">not been observed</strong> in the running app.
           </p>
         )}
