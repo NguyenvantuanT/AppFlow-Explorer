@@ -337,7 +337,7 @@ describe('explorer store — phase 6 workflow', () => {
     expect(request).toMatchObject({ suggestedName: 'demo-app-flow-map.json', extension: 'json' });
     expect(JSON.parse(request.content).screens[0]).toMatchObject({ id: 'android:Main', position: expect.any(Object) });
     expect(request.content).not.toContain('/work/demo-app');
-    expect(store.getState().exportStatus).toEqual({ ok: true, message: 'Exported to /docs/demo-app-flow-map.json' });
+    expect(store.getState().exportStatus).toEqual({ ok: true, message: 'Exported demo-app-flow-map.json', path: '/docs/demo-app-flow-map.json' });
 
     await store.getState().exportMap('svg');
     expect((agent.saveFile as ReturnType<typeof vi.fn>).mock.calls[1]![0]).toMatchObject({ extension: 'svg', content: expect.stringContaining('<svg') });

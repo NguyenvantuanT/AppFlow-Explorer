@@ -87,7 +87,7 @@ export function ExportMenu() {
         </div>
       )}
       {status && (
-        <span role="status" className={`absolute right-0 top-9 z-30 w-max max-w-[360px] truncate rounded-md border px-2 py-1 text-[11px] ${open ? 'hidden' : ''} ${status.ok ? 'border-success/40 bg-panel text-success' : 'border-danger/40 bg-panel text-danger'}`} title={status.message}>
+        <span role="status" className={`absolute right-0 top-9 z-30 w-max max-w-[360px] truncate rounded-md border px-2 py-1 text-[11px] ${open ? 'hidden' : ''} ${status.ok ? 'border-success/40 bg-panel text-success' : 'border-danger/40 bg-panel text-danger'}`} title={status.path ?? status.message}>
           {status.message}
         </span>
       )}

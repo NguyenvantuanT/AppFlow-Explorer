@@ -121,7 +121,7 @@ interface ExplorerState {
   sourceChanges: SourceChanges | null;
   /** Viewport saved in the previous session, applied once by the canvas instead of fitting. */
   restoreViewport: Viewport | null;
-  exportStatus: { ok: boolean; message: string } | null;
+  exportStatus: { ok: boolean; message: string; /** Full path, shown on hover. */ path?: string } | null;
 
   /**
    * Shows an analysis result. Re-analysis of the open project keeps every
@@ -557,7 +557,7 @@ export function createExplorerStore(initial: AppProject, deps: StoreDeps = { age
           const file = exportFlowMap(format, project, { featureOverrides: corrections.featureOverrides, positions, graph, nodeSize: (type) => NODE_SIZES[type] });
           const slug = baseProject.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'app';
           const result = await agent.saveFile({ suggestedName: `${slug}-flow-map.${file.extension}`, content: file.content, extension: file.extension });
-          set({ exportStatus: result.cancelled ? null : result.ok ? { ok: true, message: `Exported to ${result.path}` } : { ok: false, message: result.error ?? 'The export could not be saved.' } });
+          set({ exportStatus: result.cancelled ? null : result.ok ? { ok: true, message: `Exported ${result.path?.split(/[\\/]/).pop()}`, path: result.path } : { ok: false, message: result.error ?? 'The export could not be saved.' } });
         } catch (error) {
           set({ exportStatus: { ok: false, message: error instanceof Error ? error.message : String(error) } });
         }

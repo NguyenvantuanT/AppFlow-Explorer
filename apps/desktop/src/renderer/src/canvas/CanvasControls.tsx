@@ -139,8 +139,6 @@ export function CanvasControls() {
   const layoutStatus = useExplorer((s) => s.layoutStatus);
   const resetLayout = useExplorer((s) => s.resetLayout);
   const filtersActive = useExplorer((s) => JSON.stringify(s.filters) !== JSON.stringify(defaultFilters()));
-  const showMinimap = useExplorer((s) => s.view.showMinimap);
-  const setView = useExplorer((s) => s.setView);
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -165,10 +163,6 @@ export function CanvasControls() {
             {filtersActive && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
           </ToolButton>
         </span>
-        <div className="mx-0.5 h-5 w-px bg-line" />
-        <ToolButton label="Show or hide the minimap (M)" active={showMinimap} onClick={() => void setView({ showMinimap: !showMinimap })}>
-          Minimap
-        </ToolButton>
       </div>
     </div>
   );
