@@ -13,7 +13,7 @@ export const STATUS_META: Record<
   declared: {
     label: 'Declared in config',
     short: 'Declared',
-    color: '#a78bfa',
+    color: '#c4b5fd',
     description: 'Explicit navigation configuration (route table, navigation graph, storyboard segue) — not observed at runtime.',
   },
   inferred: {

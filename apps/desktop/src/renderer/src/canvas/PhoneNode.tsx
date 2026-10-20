@@ -47,20 +47,20 @@ const KIND_GLYPH: Record<WidgetKind, string> = {
 export function Wireframe({ screen }: { screen: Screen }) {
   const widgets = screen.keyWidgets.slice(0, 7);
   return (
-    <div className="flex h-full flex-col bg-[repeating-linear-gradient(135deg,#111a2e_0,#111a2e_8px,#0f1729_8px,#0f1729_16px)] p-4 text-left">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">{screen.platformKind ? PLATFORM_KIND[screen.platformKind] : 'Screen'}</div>
-      <div className="mt-1 break-words text-[19px] font-semibold leading-tight text-ink">{screen.name}</div>
-      {screen.route && <div className="mt-1 truncate font-mono text-[11px] text-[#6f9cf0]">{screen.route}</div>}
+    <div className="flex h-full flex-col bg-[repeating-linear-gradient(135deg,#25365a_0,#25365a_8px,#213153_8px,#213153_16px)] p-4 text-left">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-[#a3b3d4]">{screen.platformKind ? PLATFORM_KIND[screen.platformKind] : 'Screen'}</div>
+      <div className="mt-1 break-words text-[19px] font-semibold leading-tight text-white">{screen.name}</div>
+      {screen.route && <div className="mt-1 truncate font-mono text-[11px] text-[#93b8ff]">{screen.route}</div>}
       <div className="mt-4 space-y-1.5">
         {widgets.map((w) => (
-          <div key={`${w.name}@${w.location?.line ?? ''}`} className="flex items-center gap-1.5 rounded border border-line-strong/70 bg-panel/80 px-2 py-1 text-[10.5px] text-ink-2">
-            <span className="w-3 shrink-0 text-center text-muted">{KIND_GLYPH[w.kind]}</span>
+          <div key={`${w.name}@${w.location?.line ?? ''}`} className="flex items-center gap-1.5 rounded border border-[#5470a8]/70 bg-[#31446d] px-2 py-1 text-[10.5px] text-[#e3eaf8]">
+            <span className="w-3 shrink-0 text-center text-[#a3b3d4]">{KIND_GLYPH[w.kind]}</span>
             <span className="truncate">{w.name}</span>
           </div>
         ))}
-        {screen.keyWidgets.length > widgets.length && <div className="pl-1 text-[10px] text-muted">+{screen.keyWidgets.length - widgets.length} more</div>}
+        {screen.keyWidgets.length > widgets.length && <div className="pl-1 text-[10px] text-[#a3b3d4]">+{screen.keyWidgets.length - widgets.length} more</div>}
       </div>
-      <div className="mt-auto flex items-center gap-1.5 text-[10px] text-muted">
+      <div className="mt-auto flex items-center gap-1.5 text-[10px] text-[#a3b3d4]">
         <PhoneIcon size={12} /> Not captured yet — layout from code
       </div>
     </div>
@@ -80,11 +80,11 @@ export const PhoneNode = memo(function PhoneNode({ data, selected }: NodeProps<P
       ? 'border-success shadow-[0_0_0_4px_rgb(34_197_94/0.18),0_20px_44px_-14px_rgb(0_0_0/0.85)]'
       : fileHighlighted
         ? 'border-primary/70 shadow-[0_0_0_3px_rgb(59_130_246/0.18),0_18px_40px_-14px_rgb(0_0_0/0.8)]'
-        : `${isOverlay ? 'border-dashed border-[#4a5d86]' : 'border-[#33446a]'} shadow-[0_18px_40px_-14px_rgb(0_0_0/0.8)] group-hover:border-[#5a6f9c]`;
+        : `${isOverlay ? 'border-dashed border-[#7d93c6]' : 'border-[#5f78b0]'} shadow-[0_18px_40px_-14px_rgb(0_0_0/0.8)] group-hover:border-[#9db2e3]`;
 
   return (
     <div className="group w-[220px] cursor-pointer" data-testid={`screen-node-${screen.id}`}>
-      <div className={`relative rounded-[30px] border-2 bg-[#05070d] p-[5px] transition-[border-color,box-shadow] ${frameTone}`}>
+      <div className={`relative rounded-[30px] border-[3px] bg-[#0e1526] p-[5px] transition-[border-color,box-shadow] ${frameTone}`}>
         <div className="relative aspect-[360/780] overflow-hidden rounded-[24px] bg-panel-2">
           {shot ? (
             <img
@@ -121,7 +121,7 @@ export const PhoneNode = memo(function PhoneNode({ data, selected }: NodeProps<P
             <span className="shrink-0 rounded border border-line-strong px-1.5 py-px text-[10px] text-ink-2">{kindLabel}</span>
           )}
         </div>
-        <div className="truncate font-mono text-[11.5px] text-[#6f9cf0]">{screen.route ?? '—'}</div>
+        <div className="truncate font-mono text-[11.5px] text-[#93b8ff]">{screen.route ?? '—'}</div>
       </div>
 
       <Handle type="target" position={Position.Left} style={{ top: 232 }} isConnectable={false} />

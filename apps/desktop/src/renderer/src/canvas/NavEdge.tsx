@@ -21,16 +21,16 @@ export type NavFlowEdge = Edge<NavEdgeData, 'nav'>;
 
 /** Hex values (not CSS vars) because they are also used for SVG marker ids. */
 export const EDGE_COLORS: Record<EdgeStatus, string> = {
-  verified: '#3b82f6',
-  declared: '#a78bfa',
-  inferred: '#7c93c3',
-  unresolved: '#f59e0b',
+  verified: '#60a5fa',
+  declared: '#c4b5fd',
+  inferred: '#a9bce6',
+  unresolved: '#fbbf24',
 };
 
 const DASH: Record<EdgeStatus, string | undefined> = {
   verified: undefined,
   declared: undefined,
-  inferred: '7 5',
+  inferred: '8 5',
   unresolved: '2 6',
 };
 
@@ -51,7 +51,7 @@ export const NavEdge = memo(function NavEdge(props: EdgeProps<NavFlowEdge>) {
   });
   const labelsVisible = useStore(selectLabelsVisible);
   if (!data) return null;
-  const color = selected ? '#60a5fa' : EDGE_COLORS[data.status];
+  const color = selected ? '#93c5fd' : EDGE_COLORS[data.status];
   const strong = selected || data.emphasized;
 
   return (
@@ -62,7 +62,9 @@ export const NavEdge = memo(function NavEdge(props: EdgeProps<NavFlowEdge>) {
         interactionWidth={18}
         style={{
           stroke: color,
-          strokeWidth: selected ? 2.75 : data.emphasized ? 2.2 : 1.7,
+          strokeWidth: selected ? 3.25 : data.emphasized ? 2.75 : 2.25,
+          // Keep lines readable when zoomed out to see a large map.
+          vectorEffect: 'non-scaling-stroke',
           strokeDasharray: DASH[data.status],
           strokeLinecap: 'round',
           filter: selected ? 'drop-shadow(0 0 4px rgb(59 130 246 / 0.6))' : undefined,
@@ -72,7 +74,7 @@ export const NavEdge = memo(function NavEdge(props: EdgeProps<NavFlowEdge>) {
         <EdgeLabelRenderer>
           <div
             className={`nodrag nopan pointer-events-none absolute max-w-[180px] truncate rounded-md border px-2 py-0.5 text-[11.5px] font-medium ${
-              strong ? 'bg-panel text-white shadow-lg' : 'bg-canvas/90 text-[#9fb8e8]'
+              strong ? 'bg-panel text-white shadow-lg' : 'bg-panel/95 text-[#c7d6f5]'
             }`}
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
