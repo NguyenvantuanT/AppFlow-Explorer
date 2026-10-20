@@ -43,7 +43,7 @@ describe('Flutter adapter — Navigator + routes table (flutter_shop)', () => {
     expect(p.screens.find((s) => s.isEntryPoint)!.id).toBe('flutter:SplashScreen');
     expect(p.screens.find((s) => s.id === 'flutter:ReviewsSheet')!.kind).toBe('bottomSheet');
     expect(p.screens.find((s) => s.id === 'flutter:PaymentFailedDialog')!.kind).toBe('dialog');
-    expect(p.screens.find((s) => s.id === 'flutter:HomeScreen')!.location).toEqual({ fileId: 'lib/features/home/home_screen.dart', line: 7 });
+    expect(p.screens.find((s) => s.id === 'flutter:HomeScreen')!.location).toMatchObject({ fileId: 'lib/features/home/home_screen.dart', line: 7 });
   });
 
   it('marks every code-derived navigation as inferred, never verified or declared', () => {
@@ -81,7 +81,7 @@ describe('Flutter adapter — Navigator + routes table (flutter_shop)', () => {
 
   it('lists assets with their references and links them to components', () => {
     expect(p.assets!.map((a) => a.path).sort()).toEqual(['assets/images/hero.png', 'assets/images/logo.png']);
-    expect(p.assets!.find((a) => a.path === 'assets/images/logo.png')!.referencedFrom).toEqual([{ fileId: 'lib/features/splash/splash_screen.dart', line: 33 }]);
+    expect(p.assets!.find((a) => a.path === 'assets/images/logo.png')!.referencedFrom).toMatchObject([{ fileId: 'lib/features/splash/splash_screen.dart', line: 33 }]);
     const image = p.screens.find((s) => s.id === 'flutter:SplashScreen')!.keyWidgets.find((w) => w.kind === 'image')!;
     expect(image.assetIds).toEqual(['assets/images/logo.png']);
   });

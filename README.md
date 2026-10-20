@@ -2,7 +2,7 @@
 
 A desktop tool that turns a mobile app's source code into an interactive, Figma-like map of its screens, navigation flows and source files. It supports Flutter, Android (Kotlin/Java), iOS (Swift/Objective-C) and React Native.
 
-> **Status: Phase 4.** Real projects are analyzed statically by a local agent. Flutter apps can be built and launched on an Android emulator (or an iOS simulator on macOS) after your confirmation, and real screenshots are attached to the discovered screens. The App Flow Map combines static analysis and runtime observations. It groups screens by feature, can be filtered and corrected by hand, and keeps its layout when the project is re-analyzed. Screens without a capture stay as wireframes from code. The Phase 1 demo dataset is still available from the welcome screen.
+> **Status: Phase 5.** Real projects are analyzed statically by a local agent. Flutter apps can be built and launched on an Android emulator (or an iOS simulator on macOS) after your confirmation, and real screenshots are attached to the discovered screens. The App Flow Map combines static analysis and runtime observations. It groups screens by feature, can be filtered and corrected by hand, and keeps its layout when the project is re-analyzed. Every screen and navigation links to its source. You can open it in the built-in viewer (which follows code that moved after the analysis) or in VS Code/Cursor, and go from a line of code back to the map. Screens without a capture stay as wireframes from code. The Phase 1 demo dataset is still available from the welcome screen.
 
 ## Getting started
 
@@ -42,7 +42,7 @@ Troubleshooting:
    | Dotted amber, with a “?” node | `unresolved` | Destination unknown |
 
    Nothing is ever marked `verified` without a runtime observation. See [App Flow Map](docs/flow-map.md).
-5. Opening a file in the code viewer fetches only that file from the agent.
+5. Opening a file in the code viewer fetches only that file from the agent. No source code ever leaves the machine.
 
 Nothing in the project is executed. Dependency installs and builds exist in the agent API only behind an explicit, single-use confirmation.
 
@@ -50,9 +50,10 @@ Nothing in the project is executed. Dependency installs and builds exist in the 
 
 - [Analysis adapters](docs/adapters.md): supported project types, coverage and confidence, limitations, warning codes, and how to add an adapter.
 - [App Flow Map](docs/flow-map.md): how the map is built, node and connection types, feature grouping, filters, manual corrections, and layout stability.
+- [Source-linked exploration](docs/source-navigation.md): screen and edge source locations, uncertainty, source → canvas, stale line numbers, local editors, workspace boundaries and privacy.
 - [Runtime capture](docs/runtime-capture.md): host requirements, what runs and when you are asked, build risks, the capture workflow, and verification steps.
 - [Local agent API](docs/agent-api.md): endpoints, contracts, errors, the security model, and the operation-consent flow.
-- [Phase 1 report](docs/phase-1-report.md) · [Phase 2 report](docs/phase-2-report.md) · [Phase 3 report](docs/phase-3-report.md) · [Phase 4 report](docs/phase-4-report.md)
+- [Phase 1 report](docs/phase-1-report.md) · [Phase 2 report](docs/phase-2-report.md) · [Phase 3 report](docs/phase-3-report.md) · [Phase 4 report](docs/phase-4-report.md) · [Phase 5 report](docs/phase-5-report.md)
 
 ## Repository layout
 

@@ -18,6 +18,11 @@ export interface SourceLocation {
   line: number;
   column?: number;
   endLine?: number;
+  /**
+   * Trimmed text of `line` when the file was analyzed. Lets viewers find the
+   * line again after the file changed (see `relocate`).
+   */
+  anchor?: string;
 }
 
 export type SourceLanguage =
@@ -48,6 +53,8 @@ export interface SourceFile {
   kind?: SourceFileKind;
   moduleId?: string;
   sizeBytes?: number;
+  /** SHA-1 of the text analyzed, for files that analysis results point into. */
+  contentHash?: string;
   /**
    * Inline content. Analysis results omit it: the UI fetches a single file on
    * demand from the local agent instead of receiving the whole codebase.

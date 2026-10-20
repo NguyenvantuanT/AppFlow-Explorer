@@ -38,7 +38,20 @@ export interface AgentApi {
   getAnalysis(analysisId: string): Promise<AnalysisInfo>;
   cancelAnalysis(analysisId: string): Promise<AnalysisInfo>;
   getResult(analysisId: string): Promise<AppProject>;
-  fileContent(projectId: string, path: string): Promise<string>;
+  /** A file's current text, and a hash to compare with the one recorded at analysis. */
+  fileContent(projectId: string, path: string): Promise<{ content: string; hash?: string }>;
+  /** Opens a project file at a line in a local editor (desktop app only). */
+  openInEditor(request: OpenInEditorRequest): Promise<{ ok: boolean; error?: string }>;
+}
+
+export type EditorId = 'vscode' | 'cursor';
+
+export interface OpenInEditorRequest {
+  projectId: string;
+  path: string;
+  line?: number;
+  column?: number;
+  editor: EditorId;
 }
 
 async function call<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
@@ -61,5 +74,13 @@ export const agentApi: AgentApi = {
   getAnalysis: async (id) => (await call<{ analysis: AnalysisInfo }>('GET', `/v1/analyses/${id}`)).analysis,
   cancelAnalysis: async (id) => (await call<{ analysis: AnalysisInfo }>('POST', `/v1/analyses/${id}/cancel`)).analysis,
   getResult: async (id) => (await call<{ project: AppProject }>('GET', `/v1/analyses/${id}/result`)).project,
-  fileContent: async (projectId, path) => (await call<{ content: string }>('GET', `/v1/projects/${projectId}/files/content?path=${encodeURIComponent(path)}`)).content,
+  fileContent: async (projectId, path) => {
+    const res = await call<{ content: string; hash?: string }>('GET', `/v1/projects/${projectId}/files/content?path=${encodeURIComponent(path)}`);
+    return { content: res.content, hash: res.hash };
+  },
+  openInEditor: async (request) => {
+    const bridge = window.appflow;
+    if (!bridge?.openInEditor) return { ok: false, error: 'Opening a local editor is only available in the desktop app.' };
+    return bridge.openInEditor(request);
+  },
 };

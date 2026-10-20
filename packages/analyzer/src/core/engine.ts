@@ -1,4 +1,5 @@
-import type { AdapterRun, AppProject, PlatformId, SourceFile, SourceFileKind, SourceLanguage } from '@appflow/model';
+import { createHash } from 'node:crypto';
+import { anchorOf, type AdapterRun, type AppProject, type PlatformId, type SourceFile, type SourceFileKind, type SourceLanguage, type SourceLocation } from '@appflow/model';
 import { ProjectFs, type ScannedFile } from '../fs/projectFs';
 import { codeLanguageOf, extractFacts, type FileFacts } from '../parsing';
 import { ProjectGraphBuilder } from './builder';
@@ -216,6 +217,51 @@ export async function analyzeProject(root: string, options: AnalyzeOptions): Pro
     adapters: runs,
     excludedSensitiveFiles: scan.excludedSensitive.length,
   };
+  await anchorLocations(project, readText);
   report('done', 'Analysis complete', 100);
   return { project, durationMs: Date.now() - started };
+}
+
+/** Every source location an analysis result points to. */
+export function locationsOf(project: AppProject): SourceLocation[] {
+  const out: SourceLocation[] = [];
+  const add = (loc: SourceLocation | undefined) => loc && out.push(loc);
+  for (const s of project.screens) {
+    add(s.location);
+    s.keyWidgets.forEach((w) => add(w.location));
+    s.evidence?.forEach((e) => add(e.location));
+  }
+  for (const e of project.edges) {
+    add(e.trigger.location);
+    e.evidence.forEach((ev) => add(ev.location));
+  }
+  for (const r of project.routes ?? []) {
+    add(r.location);
+    r.evidence.forEach((ev) => add(ev.location));
+  }
+  for (const a of project.assets ?? []) a.referencedFrom.forEach(add);
+  for (const w of project.warnings ?? []) add(w.location);
+  return out;
+}
+
+/**
+ * Records the text of each referenced line (`anchor`) and a hash of each
+ * referenced file, so viewers can detect edits made after the analysis and
+ * find moved lines again instead of highlighting the wrong code.
+ */
+async function anchorLocations(project: AppProject, readText: (path: string) => Promise<string | null>): Promise<void> {
+  const byFile = new Map<string, SourceLocation[]>();
+  for (const loc of locationsOf(project)) byFile.set(loc.fileId, [...(byFile.get(loc.fileId) ?? []), loc]);
+  const files = new Map(project.files.map((f) => [f.id, f]));
+  for (const [fileId, locations] of byFile) {
+    const text = await readText(fileId);
+    if (text === null) continue;
+    const lines = text.split(/\r?\n/);
+    for (const loc of locations) {
+      const anchor = anchorOf(lines[loc.line - 1] ?? '');
+      if (anchor) loc.anchor = anchor;
+    }
+    const file = files.get(fileId);
+    if (file) file.contentHash = createHash('sha1').update(text, 'utf8').digest('hex');
+  }
 }

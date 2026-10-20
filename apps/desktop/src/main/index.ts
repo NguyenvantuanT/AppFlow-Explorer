@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { AgentHost, type AgentRequest } from './agentHost';
+import { editorUrl, EDITORS, parseOpenRequest } from './editor';
 
 const isDev = !app.isPackaged && Boolean(process.env['ELECTRON_RENDERER_URL']);
 const agent = new AgentHost();
@@ -70,6 +71,27 @@ ipcMain.handle('agent:request', async (event, req: AgentRequest) => {
     return await agent.request(req);
   } catch (error) {
     return { status: 503, body: { error: { code: 'agent_unavailable', message: error instanceof Error ? error.message : String(error) } } };
+  }
+});
+
+/**
+ * Opens a project file in a local editor at a line. The agent first checks the
+ * path the same way it checks reads (inside the project, symlinks resolved,
+ * not a sensitive file); only then is the editor's URL handler invoked. Files
+ * are never opened with the OS default handler, which could run a script.
+ */
+ipcMain.handle('editor:open', async (event, input: unknown) => {
+  if (!fromOwnWindow(event)) return { ok: false, error: 'Unknown sender.' };
+  const req = parseOpenRequest(input);
+  if (!req) return { ok: false, error: 'Invalid request.' };
+  try {
+    const res = await agent.request({ method: 'POST', path: `/v1/projects/${req.projectId}/files/reveal`, body: { path: req.path } });
+    const body = res.body as { absolutePath?: string; error?: { message?: string } };
+    if (res.status !== 200 || !body.absolutePath) return { ok: false, error: body.error?.message ?? 'The file cannot be opened.' };
+    await shell.openExternal(editorUrl(req.editor, body.absolutePath, req.line, req.column));
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: `Could not open ${EDITORS[req.editor].name}: ${error instanceof Error ? error.message : String(error)}` };
   }
 });
 

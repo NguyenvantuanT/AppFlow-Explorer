@@ -38,4 +38,23 @@ describe('DetailsPanel', () => {
     fireEvent.click(screen.getByText('Open in Code Editor'));
     expect(useExplorer.getState().code).toMatchObject({ fileId: 'lib/features/home/home_screen.dart' });
   });
+
+  it('shows where a navigation lives in code and what is uncertain about it', () => {
+    const unresolved = project.edges.find((e) => e.to === null)!;
+    act(() => useExplorer.getState().select({ kind: 'edge', id: unresolved.id }));
+    render(<DetailsPanel />);
+    const source = screen.getByTestId('edge-source');
+    expect(source).toHaveTextContent(/Event handler|Navigation call/);
+    expect(source).toHaveTextContent(`${unresolved.trigger.location!.fileId}:${unresolved.trigger.location!.line}`);
+    expect(source).toHaveTextContent('Unknown destination');
+    expect(source).toHaveTextContent('Uncertain');
+    expect(source).toHaveTextContent('No source location');
+  });
+
+  it('lists the UI states of a screen', () => {
+    act(() => useExplorer.getState().select({ kind: 'screen', id: 'home' }));
+    render(<DetailsPanel />);
+    expect(screen.getByText('UI states')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-states')).toHaveTextContent('Mock illustration');
+  });
 });

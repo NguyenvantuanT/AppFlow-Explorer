@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { readFileSync, realpathSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -134,6 +136,31 @@ describe('file access', () => {
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({ path: 'lib/main.dart', language: 'dart' });
     expect(res.json.content).toContain('class ShopLiteApp');
+    // Same hash as the analysis records, so the viewer can tell whether the file changed.
+    expect(res.json.hash).toBe(createHash('sha1').update(readFileSync(path.join(fixtures, 'flutter_shop', 'lib', 'main.dart'), 'utf8'), 'utf8').digest('hex'));
+  });
+
+  it('reveals the real path of a project file for opening in a local editor', async () => {
+    const project = await register('flutter_shop');
+    const res = await api('POST', `/v1/projects/${project.id}/files/reveal`, { path: 'lib/main.dart' });
+    expect(res.status).toBe(200);
+    expect(res.json.path).toBe('lib/main.dart');
+    expect(res.json.absolutePath).toBe(realpathSync(path.join(fixtures, 'flutter_shop', 'lib', 'main.dart')));
+  });
+
+  it.each([
+    ['../android_tasky/settings.gradle.kts', 403],
+    [path.join(fixtures, 'flutter_shop', 'lib', 'main.dart'), 403],
+    ['.env', 403],
+    ['android/key.properties', 403],
+    ['android/app/upload-keystore.jks', 403],
+    ['lib', 403],
+    ['lib/missing.dart', 404],
+  ])('reveal %s → %i', async (p, status) => {
+    const project = await register('flutter_shop');
+    const res = await api('POST', `/v1/projects/${project.id}/files/reveal`, { path: p });
+    expect(res.status).toBe(status);
+    expect(res.json.absolutePath).toBeUndefined();
   });
 
   it.each([

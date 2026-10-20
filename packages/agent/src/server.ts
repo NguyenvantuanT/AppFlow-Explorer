@@ -18,6 +18,7 @@ import {
   CaptureRequest,
   FileContentQuery,
   RegisterProjectRequest,
+  RevealFileRequest,
   RunOperationRequest,
   StartAnalysisRequest,
   StartSessionRequest,
@@ -199,7 +200,27 @@ export async function startAgent(options: AgentOptions = {}): Promise<Agent> {
       if (languageOf(rel) === 'image' || content.includes('\0') || content.includes('�')) {
         throw new ApiError('unsupported_media_type', 'Binary files cannot be previewed.');
       }
-      return { body: { path: p.fs.relative(rel), language: languageOf(rel), content } };
+      // The hash lets the viewer tell whether the file changed since it was analyzed.
+      const hash = createHash('sha1').update(content, 'utf8').digest('hex');
+      return { body: { path: p.fs.relative(rel), language: languageOf(rel), content, hash } };
+    }],
+
+    // Resolves a project file to its real absolute path so the desktop app can open it in a local
+    // editor. Same rules as reading: inside the project (symlinks resolved), not sensitive, a regular file.
+    ['POST', /^\/v1\/projects\/([\w-]+)\/files\/reveal$/, async ({ params, body }) => {
+      const p = project(params[0]!);
+      const { path: rel } = parse(RevealFileRequest, body);
+      try {
+        const normalized = p.fs.relative(rel);
+        if (p.fs.isSensitive(normalized)) throw new AccessDeniedError(`Refusing to open a sensitive file: ${normalized}`);
+        const abs = await p.fs.resolve(normalized);
+        const stat = await fsp.stat(abs);
+        if (!stat.isFile()) throw new AccessDeniedError(`Not a file: ${normalized}`);
+        return { body: { path: normalized, absolutePath: abs } };
+      } catch (error) {
+        if (error instanceof AccessDeniedError) throw new ApiError('forbidden', error.message);
+        throw new ApiError('not_found', 'File not found.');
+      }
     }],
 
     ['GET', /^\/v1\/projects\/([\w-]+)\/operations$/, async ({ params }) => {

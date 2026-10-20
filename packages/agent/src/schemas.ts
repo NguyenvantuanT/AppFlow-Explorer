@@ -20,6 +20,10 @@ export const FileContentQuery = z.object({
   path: z.string().min(1).max(4096),
 });
 
+export const RevealFileRequest = z.object({
+  path: z.string().min(1).max(4096),
+});
+
 export const RunOperationRequest = z.object({
   operation: z.string().min(1).max(64),
   /** Token from a previous `confirmation_required` response, after the user agreed. */
