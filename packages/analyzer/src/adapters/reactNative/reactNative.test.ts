@@ -34,7 +34,7 @@ describe('React Native adapter (rn_recipebox)', () => {
 
   it('reads stack and tab screens through imports and route constants', () => {
     expect(p.routes!.map((r) => r.name)).toEqual(['Welcome', 'Main', 'RecipeDetail', 'Cooking', 'Share', 'Recipes', 'Favorites', 'Profile']);
-    expect(p.screens.find((s) => s.id === 'react-native:RecipeDetailScreen')!.location).toEqual({ fileId: 'src/screens/RecipeDetailScreen.tsx', line: 4 });
+    expect(p.screens.find((s) => s.id === 'react-native:RecipeDetailScreen')!.location).toMatchObject({ fileId: 'src/screens/RecipeDetailScreen.tsx', line: 4 });
     expect(p.screens.find((s) => s.isEntryPoint)!.id).toBe('react-native:WelcomeScreen');
     expect(p.screens.find((s) => s.id === 'react-native:ShareSheet')!.kind).toBe('dialog');
   });

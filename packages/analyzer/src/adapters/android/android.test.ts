@@ -82,7 +82,7 @@ describe('Android adapter (android_tasky)', () => {
   it('lists layout views and Compose components with labels', () => {
     const legacy = p.screens.find((s) => s.id === 'android:LegacyHelpActivity')!;
     expect(legacy.keyWidgets.map((w) => w.name)).toEqual(['Button @id/btn_home “Back to tasks”', 'Button @id/btn_web “Open website”']);
-    expect(legacy.keyWidgets[0]!.location).toEqual({ fileId: 'app/src/main/res/layout/activity_legacy_help.xml', line: 5 });
+    expect(legacy.keyWidgets[0]!.location).toMatchObject({ fileId: 'app/src/main/res/layout/activity_legacy_help.xml', line: 5 });
     const overview = p.screens.find((s) => s.id === 'android:ProfileOverviewScreen')!;
     expect(overview.keyWidgets.map((w) => w.name)).toContain('Button “Edit profile”');
   });

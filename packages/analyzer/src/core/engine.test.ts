@@ -1,9 +1,11 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { defaultAdapters } from '../adapters';
-import { analyzeProject, type AnalysisProgress } from './engine';
+import { anchorOf } from '@appflow/model';
+import { analyzeProject, locationsOf, type AnalysisProgress } from './engine';
 import type { AnalysisAdapter } from './types';
 
 const fixtures = path.resolve(__dirname, '../../fixtures');
@@ -82,5 +84,31 @@ describe('engine behavior', () => {
     const { project } = await analyzeProject(dir, { adapters: defaultAdapters });
     expect(project.warnings!.some((w) => w.code === 'parse-errors' && w.location?.fileId === 'lib/main.dart')).toBe(true);
     expect(project.adapters![0]!.status).not.toBe('failed');
+  });
+});
+
+describe('source locations', () => {
+  it.each(['flutter_shop', 'flutter_auto_route', 'android_tasky', 'ios_bookshelf', 'rn_recipebox'])('%s: every location is a real file and line, with the text it pointed to', async (name) => {
+    const root = path.join(fixtures, name);
+    const { project } = await analyzeProject(root, { adapters: defaultAdapters });
+    const files = new Map(project.files.map((f) => [f.id, f]));
+    const locations = locationsOf(project);
+    expect(locations.length).toBeGreaterThan(0);
+    for (const loc of locations) {
+      const file = files.get(loc.fileId);
+      expect(file, loc.fileId).toBeDefined();
+      const text = readFileSync(path.join(root, loc.fileId), 'utf8');
+      const lines = text.split(/\r?\n/);
+      expect(loc.line, `${loc.fileId}:${loc.line}`).toBeGreaterThanOrEqual(1);
+      expect(loc.line, `${loc.fileId}:${loc.line}`).toBeLessThanOrEqual(lines.length);
+      if (loc.endLine !== undefined) expect(loc.endLine).toBeGreaterThanOrEqual(loc.line);
+      expect(loc.anchor ?? '').toBe(anchorOf(lines[loc.line - 1]!));
+      expect(file!.contentHash).toBe(createHash('sha1').update(text, 'utf8').digest('hex'));
+    }
+  });
+
+  it('never anchors into sensitive files', async () => {
+    const { project } = await analyzeProject(path.join(fixtures, 'flutter_shop'), { adapters: defaultAdapters });
+    expect(locationsOf(project).some((l) => /(^|\/)\.env|key\.properties|\.jks$/.test(l.fileId))).toBe(false);
   });
 });

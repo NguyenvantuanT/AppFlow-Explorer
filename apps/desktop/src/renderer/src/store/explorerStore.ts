@@ -3,7 +3,9 @@ import {
   applyCorrections,
   applyRuntime,
   buildFlowGraph,
+  bestEdgeLocation,
   buildProjectIndex,
+  canvasTargetAt,
   defaultFilters,
   emptyCorrections,
   MANUAL_EDGE_PREFIX,
@@ -20,7 +22,7 @@ import {
   type StaleCorrection,
 } from '@appflow/model';
 import { create } from 'zustand';
-import { agentApi, type AgentApi } from '../agent/client';
+import { agentApi, type AgentApi, type EditorId } from '../agent/client';
 import { computeAutoLayout, mergeLayout, NODE_SIZES, resolveOverlaps, stabilizeLayout, type Positions, type XY } from '../canvas/layout';
 import { loadCorrections, loadPinnedLayout, loadViewPrefs, saveCorrections, savePinnedLayout, saveViewPrefs, type ViewPrefs } from '../canvas/layoutStorage';
 
@@ -30,6 +32,8 @@ export interface CodeTarget {
   fileId: string;
   line?: number;
   endLine?: number;
+  /** Text the line had at analysis time, used to find it again if the file changed. */
+  anchor?: string;
 }
 
 export type LayoutStatus = 'idle' | 'computing' | 'ready' | 'error';
@@ -58,6 +62,8 @@ export interface Workspace {
 export interface FileContentState {
   status: 'loading' | 'ready' | 'error';
   content?: string;
+  /** Hash of `content`; differs from the file's `contentHash` when it changed after analysis. */
+  hash?: string;
   error?: string;
 }
 
@@ -131,6 +137,16 @@ interface ExplorerState {
   openCode(target: CodeTarget | SourceLocation): void;
   closeCode(): void;
   highlightFile(fileId: string | null): void;
+  /** Fetches a file again, e.g. after it was edited. */
+  reloadFile(fileId: string): Promise<void>;
+  /** Source → canvas: selects and shows what a line of a file corresponds to. Returns false when nothing does. */
+  revealSource(fileId: string, line: number): boolean;
+  /** Local editor used by "Open in editor". */
+  editor: EditorId;
+  setEditor(editor: EditorId): void;
+  /** Opens a location in the local editor; the result message is kept in `editorStatus`. */
+  openInEditor(target: CodeTarget): Promise<void>;
+  editorStatus: { ok: boolean; message: string } | null;
   pinNode(id: string, position: XY): void;
   pinNodes(positions: Positions): void;
   /** Re-arranges everything automatically and forgets manual positions. */
@@ -153,12 +169,23 @@ interface ExplorerState {
   setView(view: Partial<ViewPrefs>): Promise<void>;
 }
 
-function codeTargetFor(state: Pick<ExplorerState, 'index'>, selection: Selection): CodeTarget | null {
+function codeTargetFor(state: Pick<ExplorerState, 'index' | 'project'>, selection: Selection): CodeTarget | null {
   if (!selection) return null;
   if (selection.kind === 'screen') {
     return state.index.screensById.get(selection.id)?.location ?? null;
   }
-  return state.index.edgesById.get(selection.id)?.trigger.location ?? null;
+  const edge = state.index.edgesById.get(selection.id);
+  // The handler when known, otherwise how the destination was resolved.
+  return edge ? (bestEdgeLocation(edge, state.project) ?? null) : null;
+}
+
+const EDITOR_KEY = 'appflow:editor:v1';
+function loadEditor(): EditorId {
+  try {
+    return localStorage.getItem(EDITOR_KEY) === 'cursor' ? 'cursor' : 'vscode';
+  } catch {
+    return 'vscode';
+  }
 }
 
 /** Everything shown, derived from the analysis result, corrections, runtime input and view options. */
@@ -377,8 +404,8 @@ export function createExplorerStore(initial: AppProject, deps: StoreDeps = { age
         if (!file || file.content !== undefined || fileContents[fileId] || project.source !== 'analysis' || !workspace.projectId) return;
         set((s) => ({ fileContents: { ...s.fileContents, [fileId]: { status: 'loading' } } }));
         try {
-          const content = await agent.fileContent(workspace.projectId, file.path);
-          set((s) => ({ fileContents: { ...s.fileContents, [fileId]: { status: 'ready', content } } }));
+          const { content, hash } = await agent.fileContent(workspace.projectId, file.path);
+          set((s) => ({ fileContents: { ...s.fileContents, [fileId]: { status: 'ready', content, hash } } }));
         } catch (error) {
           set((s) => ({ fileContents: { ...s.fileContents, [fileId]: { status: 'error', error: error instanceof Error ? error.message : String(error) } } }));
         }
@@ -400,7 +427,46 @@ export function createExplorerStore(initial: AppProject, deps: StoreDeps = { age
       },
 
       openCode(target) {
-        set({ code: { fileId: target.fileId, line: target.line, endLine: target.endLine } });
+        set({ code: { fileId: target.fileId, line: target.line, endLine: target.endLine, anchor: target.anchor } });
+      },
+
+      async reloadFile(fileId) {
+        set((s) => {
+          const fileContents = { ...s.fileContents };
+          delete fileContents[fileId];
+          return { fileContents };
+        });
+        await get().ensureFileContent(fileId);
+      },
+
+      revealSource(fileId, line) {
+        const target = canvasTargetAt(get().project, fileId, line);
+        if (!target) return false;
+        get().select(target, { focus: true });
+        return true;
+      },
+
+      editor: loadEditor(),
+      editorStatus: null,
+
+      setEditor(editor) {
+        try {
+          localStorage.setItem(EDITOR_KEY, editor);
+        } catch {
+          // Non-fatal.
+        }
+        set({ editor });
+      },
+
+      async openInEditor(target) {
+        const { workspace, project, editor } = get();
+        const file = project.files.find((f) => f.id === target.fileId);
+        if (project.source !== 'analysis' || !workspace.projectId || !file) {
+          set({ editorStatus: { ok: false, message: 'Only files of an analyzed project on this computer can be opened in an editor.' } });
+          return;
+        }
+        const result = await agent.openInEditor({ projectId: workspace.projectId, path: file.path, line: target.line, editor });
+        set({ editorStatus: result.ok ? { ok: true, message: `Opened ${file.path}${target.line ? `:${target.line}` : ''}` } : { ok: false, message: result.error ?? 'The editor could not be opened.' } });
       },
 
       closeCode() {

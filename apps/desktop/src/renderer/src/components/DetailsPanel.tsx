@@ -1,8 +1,10 @@
-import { edgeStatus, featureLabel, featureOf, type AnalysisWarning, type EvidenceSource, type NavigationEdge, type Screen, type SourceLocation } from '@appflow/model';
+import { bestEdgeLocation, edgeStatus, featureLabel, featureOf, type AnalysisWarning, type EvidenceSource, type NavigationEdge, type Screen, type SourceLocation } from '@appflow/model';
 import { useState, type ReactNode } from 'react';
 import { Wireframe } from '../canvas/PhoneNode';
 import { CorrectionsOverview, EdgeCorrections, ScreenCorrections } from './Corrections';
 import { RuntimePanel } from './RuntimePanel';
+import { EdgeSourceSection, ScreenStatesSection } from './SourceSections';
+import { EditorButton } from './CodePanel';
 import { useExplorer } from '../store';
 import { ArrowIcon, CloseIcon, CodeIcon, WidgetIcon } from './icons';
 import { STATUS_META, StatusBadge } from './StatusBadge';
@@ -151,8 +153,20 @@ function ScreenDetails({ screen }: { screen: Screen }) {
         )}
       </Section>
 
-      <Section title="Associated file">
-        <SourceLink location={screen.location} />
+      <Section title="Source">
+        <div className="flex items-center gap-2">
+          <span className="min-w-0 flex-1">
+            <SourceLink location={screen.location} />
+          </span>
+          <EditorButton target={screen.location} compact />
+        </div>
+        <Field label="Route">
+          <span className="font-mono text-[12px]">{screen.route ?? 'No named route'}</span>
+        </Field>
+      </Section>
+
+      <Section title="UI states" count={screen.states.length}>
+        <ScreenStatesSection screen={screen} />
       </Section>
 
       <Section title="Correct the map">
@@ -314,11 +328,10 @@ function EdgeDetails({ edge }: { edge: NavigationEdge }) {
             <span className="font-mono text-[12px]">{edge.trigger.handler}</span>
           </Field>
         )}
-        {edge.trigger.location && (
-          <Field label="Source">
-            <SourceLink location={edge.trigger.location} />
-          </Field>
-        )}
+      </Section>
+
+      <Section title="Source">
+        <EdgeSourceSection edge={edge} />
       </Section>
 
       <Section title="Correct the map">
@@ -503,6 +516,7 @@ function WarningsSection({ warnings }: { warnings: AnalysisWarning[] }) {
 }
 
 export function DetailsPanel() {
+  const project = useExplorer((s) => s.project);
   const selection = useExplorer((s) => s.selection);
   const index = useExplorer((s) => s.index);
   const select = useExplorer((s) => s.select);
@@ -521,7 +535,7 @@ export function DetailsPanel() {
 
   const hasSource =
     (selection?.kind === 'screen' && index.screensById.has(selection.id)) ||
-    (selection?.kind === 'edge' && !!index.edgesById.get(selection.id)?.trigger.location);
+    (selection?.kind === 'edge' && index.edgesById.has(selection.id) && !!bestEdgeLocation(index.edgesById.get(selection.id)!, project));
 
   const tabClass = (active: boolean) => `h-full border-b-2 px-1 text-[13px] font-semibold ${active ? 'border-primary text-white' : 'border-transparent text-muted hover:text-ink'}`;
 

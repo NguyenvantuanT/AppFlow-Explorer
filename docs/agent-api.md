@@ -97,7 +97,12 @@ An adapter that crashes does not fail the analysis. The adapter is reported in `
 
 ### Files
 
-`GET /v1/projects/:id/files/content?path=lib/main.dart` returns `{ path, language, content }`. Paths are relative to the project root.
+| Method & path | Body | Response |
+| --- | --- | --- |
+| `GET /v1/projects/:id/files/content?path=lib/main.dart` | — | `{ path, language, content, hash }`. `hash` is the SHA-1 of `content`; compare it with the file's `contentHash` in the analysis result to detect edits made after the analysis |
+| `POST /v1/projects/:id/files/reveal` | `{ "path": "lib/main.dart" }` | `{ path, absolutePath }`, the real path for opening in a local editor. Same rules as reading: inside the project after resolving symlinks, not sensitive, a regular file (otherwise `403` or `404`) |
+
+Paths are relative to the project root. Analysis results carry `anchor` (the text of the line) on every source location, and `contentHash` on every file a location points into. See [source-navigation.md](source-navigation.md).
 
 ### Operations (consent required)
 

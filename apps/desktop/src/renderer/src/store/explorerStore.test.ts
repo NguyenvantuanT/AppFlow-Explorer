@@ -27,7 +27,8 @@ function fakeAgent(statuses: AnalysisInfo['status'][], overrides: Partial<AgentA
     getAnalysis: vi.fn(async () => info(statuses[Math.min(polls++, statuses.length - 1)]!)),
     cancelAnalysis: vi.fn(async () => info('cancelled')),
     getResult: vi.fn(async () => analyzed),
-    fileContent: vi.fn(async () => 'class Main'),
+    fileContent: vi.fn(async () => ({ content: 'class Main', hash: 'h1' })),
+    openInEditor: vi.fn(async () => ({ ok: true })),
     ...overrides,
   };
 }
@@ -87,7 +88,7 @@ describe('explorer store — local agent workflow', () => {
     await store.getState().ensureFileContent('app/Main.kt');
     expect(agent.fileContent).toHaveBeenCalledTimes(1);
     expect(agent.fileContent).toHaveBeenCalledWith('p1', 'app/Main.kt');
-    expect(store.getState().fileContents['app/Main.kt']).toEqual({ status: 'ready', content: 'class Main' });
+    expect(store.getState().fileContents['app/Main.kt']).toEqual({ status: 'ready', content: 'class Main', hash: 'h1' });
   });
 });
 
@@ -195,5 +196,83 @@ describe('explorer store — flow map, corrections and re-analysis', () => {
     expect(observed.trigger.label).toBe('Observed at runtime');
     expect(store.getState().index.statusCounts.verified).toBe(1);
     expect(store.getState().graph.edges.some((e) => e.id === observed.id && e.status === 'verified')).toBe(true);
+  });
+});
+
+describe('explorer store — source-linked exploration', () => {
+  const at = (fileId: string, line: number) => ({ fileId, line });
+  const project: AppProject = {
+    id: 'p1',
+    name: 'app',
+    framework: 'flutter',
+    rootPath: '/app',
+    source: 'analysis',
+    files: [{ id: 'lib/home.dart', path: 'lib/home.dart', language: 'dart' }],
+    screens: [
+      { id: 'home', name: 'Home', kind: 'page', widgetClass: 'HomeScreen', location: { ...at('lib/home.dart', 1), endLine: 20 }, isEntryPoint: true, keyWidgets: [], states: [] },
+      { id: 'cart', name: 'Cart', kind: 'page', widgetClass: 'CartScreen', location: at('lib/home.dart', 30), isEntryPoint: false, keyWidgets: [], states: [] },
+    ],
+    edges: [
+      { id: 'home->cart:push', from: 'home', to: 'cart', kind: 'push', trigger: { label: 'Tap', description: 'onTap', handler: 'onTap', location: at('lib/home.dart', 12) }, evidence: [{ source: 'static', detail: 'push' }] },
+    ],
+  };
+
+  async function opened() {
+    const agent = fakeAgent(['succeeded'], { getResult: vi.fn(async () => project) });
+    const store = createExplorerStore(shopliteProject, { agent, pollMs: 0 });
+    await store.getState().openProjectFolder();
+    return { store, agent };
+  }
+
+  it('opens the best source location for an edge, and nothing invented when there is none', async () => {
+    const { store } = await opened();
+    store.getState().select({ kind: 'edge', id: 'home->cart:push' }, { openCode: true });
+    expect(store.getState().code).toMatchObject({ fileId: 'lib/home.dart', line: 12 });
+    store.getState().closeCode();
+    const added = store.getState().addEdge({ from: 'cart', to: 'home', label: 'Back', kind: 'pop' });
+    store.getState().select({ kind: 'edge', id: added }, { openCode: true });
+    // Added by hand: no handler location, so the destination screen's declaration is the best available one.
+    expect(store.getState().code).toMatchObject({ fileId: 'lib/home.dart', line: 1 });
+  });
+
+  it('maps source lines back to the canvas', async () => {
+    const { store } = await opened();
+    expect(store.getState().revealSource('lib/home.dart', 12)).toBe(true);
+    expect(store.getState().selection).toEqual({ kind: 'edge', id: 'home->cart:push' });
+    expect(store.getState().focusRequest?.target).toEqual({ kind: 'edge', id: 'home->cart:push' });
+    expect(store.getState().revealSource('lib/home.dart', 31)).toBe(true);
+    expect(store.getState().selection).toEqual({ kind: 'screen', id: 'cart' });
+    expect(store.getState().revealSource('lib/other.dart', 1)).toBe(false);
+  });
+
+  it('opens files in the chosen local editor through the agent, only for analyzed projects', async () => {
+    const { store, agent } = await opened();
+    store.getState().setEditor('cursor');
+    await store.getState().openInEditor({ fileId: 'lib/home.dart', line: 12 });
+    expect(agent.openInEditor).toHaveBeenCalledWith({ projectId: 'p1', path: 'lib/home.dart', line: 12, editor: 'cursor' });
+    expect(store.getState().editorStatus).toEqual({ ok: true, message: 'Opened lib/home.dart:12' });
+
+    await store.getState().openInEditor({ fileId: 'lib/not-analyzed.dart', line: 1 });
+    expect(store.getState().editorStatus?.ok).toBe(false);
+    expect(agent.openInEditor).toHaveBeenCalledTimes(1);
+
+    const refused = fakeAgent(['succeeded'], { getResult: vi.fn(async () => project), openInEditor: vi.fn(async () => ({ ok: false, error: 'Refusing to open a sensitive file' })) });
+    const store2 = createExplorerStore(shopliteProject, { agent: refused, pollMs: 0 });
+    await store2.getState().openProjectFolder();
+    await store2.getState().openInEditor({ fileId: 'lib/home.dart' });
+    expect(store2.getState().editorStatus).toEqual({ ok: false, message: 'Refusing to open a sensitive file' });
+
+    await store2.getState().loadDemo();
+    await store2.getState().openInEditor({ fileId: 'lib/main.dart', line: 1 });
+    expect(store2.getState().editorStatus?.message).toMatch(/analyzed project/);
+  });
+
+  it('reloads a file after it was edited', async () => {
+    let n = 0;
+    const { store, agent } = await opened();
+    (agent.fileContent as ReturnType<typeof vi.fn>).mockImplementation(async () => ({ content: `v${++n}`, hash: `h${n}` }));
+    await store.getState().ensureFileContent('lib/home.dart');
+    await store.getState().reloadFile('lib/home.dart');
+    expect(store.getState().fileContents['lib/home.dart']).toEqual({ status: 'ready', content: 'v2', hash: 'h2' });
   });
 });
