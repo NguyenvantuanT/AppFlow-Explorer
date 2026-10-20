@@ -15,6 +15,9 @@ export interface NavEdgeData extends Record<string, unknown> {
   kind: NavigationKind;
   label: string;
   emphasized: boolean;
+  /** Position among edges drawn between the same two nodes. */
+  parallelIndex: number;
+  parallelCount: number;
 }
 
 export type NavFlowEdge = Edge<NavEdgeData, 'nav'>;
@@ -22,6 +25,7 @@ export type NavFlowEdge = Edge<NavEdgeData, 'nav'>;
 /** Hex values (not CSS vars) because they are also used for SVG marker ids. */
 export const EDGE_COLORS: Record<EdgeStatus, string> = {
   verified: '#60a5fa',
+  manual: '#5eead4',
   declared: '#c4b5fd',
   inferred: '#a9bce6',
   unresolved: '#fbbf24',
@@ -29,6 +33,7 @@ export const EDGE_COLORS: Record<EdgeStatus, string> = {
 
 const DASH: Record<EdgeStatus, string | undefined> = {
   verified: undefined,
+  manual: '12 4 2 4',
   declared: undefined,
   inferred: '8 5',
   unresolved: '2 6',
@@ -39,6 +44,7 @@ const selectLabelsVisible = (s: ReactFlowState) => s.transform[2] >= 0.38;
 
 export const NavEdge = memo(function NavEdge(props: EdgeProps<NavFlowEdge>) {
   const { sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, selected, data } = props;
+  const spread = data && data.parallelCount > 1 ? (data.parallelIndex - (data.parallelCount - 1) / 2) * 28 : 0;
   const [path, labelX, labelY] = getSmoothStepPath({
     sourceX,
     sourceY,
@@ -48,6 +54,8 @@ export const NavEdge = memo(function NavEdge(props: EdgeProps<NavFlowEdge>) {
     targetPosition,
     borderRadius: 14,
     offset: 28,
+    // Spread edges between the same two nodes so each line and label stays distinct.
+    centerX: (sourceX + targetX) / 2 + spread,
   });
   const labelsVisible = useStore(selectLabelsVisible);
   if (!data) return null;
@@ -77,7 +85,7 @@ export const NavEdge = memo(function NavEdge(props: EdgeProps<NavFlowEdge>) {
               strong ? 'bg-panel text-white shadow-lg' : 'bg-panel/95 text-[#c7d6f5]'
             }`}
             style={{
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY + spread}px)`,
               borderColor: strong ? `${color}aa` : 'transparent',
             }}
           >

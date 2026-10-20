@@ -41,3 +41,5 @@ export const SidebarLeftIcon = make(<><rect x="3" y="4" width="18" height="16" r
 export const SidebarRightIcon = make(<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M15 4v16" /></>);
 export const AlertIcon = make(<><path d="M12 3 2 20h20z" /><path d="M12 10v4M12 17h.01" /></>);
 export const ImportIcon = make(<><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></>);
+export const FilterIcon = make(<path d="M3 5h18l-7 8v6l-4 2v-8z" />);
+export const InfoIcon = make(<><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5h.01" /></>);

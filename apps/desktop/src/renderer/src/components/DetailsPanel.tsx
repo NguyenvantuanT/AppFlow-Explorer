@@ -1,6 +1,7 @@
-import { edgeStatus, type AnalysisWarning, type NavigationEdge, type Screen, type SourceLocation } from '@appflow/model';
+import { edgeStatus, featureLabel, featureOf, type AnalysisWarning, type EvidenceSource, type NavigationEdge, type Screen, type SourceLocation } from '@appflow/model';
 import { useState, type ReactNode } from 'react';
 import { Wireframe } from '../canvas/PhoneNode';
+import { CorrectionsOverview, EdgeCorrections, ScreenCorrections } from './Corrections';
 import { RuntimePanel } from './RuntimePanel';
 import { useExplorer } from '../store';
 import { ArrowIcon, CloseIcon, CodeIcon, WidgetIcon } from './icons';
@@ -81,6 +82,7 @@ function ScreenDetails({ screen }: { screen: Screen }) {
   const outgoing = index.outgoing.get(screen.id) ?? [];
   const openCode = useExplorer((s) => s.openCode);
   const moduleName = useExplorer((s) => s.project.modules?.find((m) => m.id === screen.moduleId)?.name);
+  const feature = useExplorer((s) => featureLabel(featureOf(screen, s.corrections.featureOverrides)));
   const state = screen.states[0];
 
   return (
@@ -96,6 +98,7 @@ function ScreenDetails({ screen }: { screen: Screen }) {
                 {moduleName && ` · ${moduleName}`}
               </div>
             )}
+            <div className="mt-0.5 truncate text-[11.5px] text-muted">Feature: {feature}</div>
           </div>
           {screen.isEntryPoint ? (
             <span className="shrink-0 rounded-md bg-success/15 px-2 py-0.5 text-[11px] font-medium text-success">Start screen</span>
@@ -150,6 +153,10 @@ function ScreenDetails({ screen }: { screen: Screen }) {
 
       <Section title="Associated file">
         <SourceLink location={screen.location} />
+      </Section>
+
+      <Section title="Correct the map">
+        <ScreenCorrections key={screen.id} screen={screen} />
       </Section>
 
       <Section title="Key widgets" count={screen.keyWidgets.length}>
@@ -217,9 +224,16 @@ const PLATFORM_KIND_LABEL: Record<NonNullable<Screen['platformKind']>, string> =
   component: 'React Native component',
 };
 
-function EvidenceTag({ source }: { source: 'runtime' | 'declared' | 'static' }) {
-  const style = source === 'runtime' ? 'bg-primary/15 text-primary' : source === 'declared' ? 'bg-[#c4b5fd]/15 text-[#c4b5fd]' : 'bg-inferred/15 text-inferred';
-  return <span className={`shrink-0 rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${style}`}>{source === 'runtime' ? 'Runtime' : source === 'declared' ? 'Config' : 'Code'}</span>;
+const EVIDENCE_TAG: Record<EvidenceSource, { label: string; style: string }> = {
+  runtime: { label: 'Runtime', style: 'bg-primary/15 text-primary' },
+  manual: { label: 'You', style: 'bg-[#5eead4]/15 text-[#5eead4]' },
+  declared: { label: 'Config', style: 'bg-[#c4b5fd]/15 text-[#c4b5fd]' },
+  static: { label: 'Code', style: 'bg-inferred/15 text-inferred' },
+};
+
+function EvidenceTag({ source }: { source: EvidenceSource }) {
+  const tag = EVIDENCE_TAG[source];
+  return <span className={`shrink-0 rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${tag.style}`}>{tag.label}</span>;
 }
 
 function EdgeDetails({ edge }: { edge: NavigationEdge }) {
@@ -255,6 +269,17 @@ function EdgeDetails({ edge }: { edge: NavigationEdge }) {
         {status === 'inferred' && (
           <p className="mt-2 rounded-md border border-inferred/30 bg-inferred/10 px-2.5 py-2 text-[12px] leading-relaxed text-ink-2">
             This flow is <strong className="text-ink">not verified</strong>. It was derived from source code and has not been observed in the running app.
+          </p>
+        )}
+        {status === 'manual' && (
+          <p className="mt-2 rounded-md border border-[#5eead4]/30 bg-[#5eead4]/10 px-2.5 py-2 text-[12px] leading-relaxed text-ink-2">
+            {edge.correction?.addedByUser ? 'You added this connection.' : 'You chose this destination; analysis could not determine it.'} It is <strong className="text-ink">not verified</strong> unless it is
+            observed in the running app.
+          </p>
+        )}
+        {status === 'verified' && edge.id.startsWith('runtime:') && (
+          <p className="mt-2 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-2 text-[12px] leading-relaxed text-ink-2">
+            Seen in the running app, but analysis found no code path for it. <strong className="text-ink">The action that triggers it is unknown.</strong>
           </p>
         )}
         {status === 'declared' && (
@@ -294,6 +319,10 @@ function EdgeDetails({ edge }: { edge: NavigationEdge }) {
             <SourceLink location={edge.trigger.location} />
           </Field>
         )}
+      </Section>
+
+      <Section title="Correct the map">
+        <EdgeCorrections edge={edge} />
       </Section>
 
       <Section title="Evidence" count={edge.evidence.length}>
@@ -352,12 +381,16 @@ function ProjectOverview() {
       </div>
 
       <Section title="Navigation confidence">
-        {(['verified', 'declared', 'inferred', 'unresolved'] as const).map((st) => (
+        {(['verified', 'manual', 'declared', 'inferred', 'unresolved'] as const).filter((st) => st !== 'manual' || index.statusCounts.manual > 0).map((st) => (
           <div key={st} className="flex items-center justify-between py-1">
             <StatusBadge status={st} />
             <span className="font-mono text-ink">{index.statusCounts[st]}</span>
           </div>
         ))}
+      </Section>
+
+      <Section title="Your corrections">
+        <CorrectionsOverview />
       </Section>
 
       {!!project.modules?.length && (

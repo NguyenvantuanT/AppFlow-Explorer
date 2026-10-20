@@ -1,8 +1,28 @@
-import { applyRuntime, buildProjectIndex, type AppProject, type ProjectIndex, type RuntimeCapture, type RuntimeObservation, type SourceLocation } from '@appflow/model';
+import {
+  ambiguousObservations,
+  applyCorrections,
+  applyRuntime,
+  buildFlowGraph,
+  buildProjectIndex,
+  defaultFilters,
+  emptyCorrections,
+  MANUAL_EDGE_PREFIX,
+  type AppProject,
+  type FlowFilters,
+  type FlowGraph,
+  type GraphCorrections,
+  type NavigationEdge,
+  type NavigationKind,
+  type ProjectIndex,
+  type RuntimeCapture,
+  type RuntimeObservation,
+  type SourceLocation,
+  type StaleCorrection,
+} from '@appflow/model';
 import { create } from 'zustand';
 import { agentApi, type AgentApi } from '../agent/client';
-import { computeAutoLayout, mergeLayout, type Positions, type XY } from '../canvas/layout';
-import { loadPinnedLayout, savePinnedLayout } from '../canvas/layoutStorage';
+import { computeAutoLayout, mergeLayout, NODE_SIZES, resolveOverlaps, stabilizeLayout, type Positions, type XY } from '../canvas/layout';
+import { loadCorrections, loadPinnedLayout, loadViewPrefs, saveCorrections, savePinnedLayout, saveViewPrefs, type ViewPrefs } from '../canvas/layoutStorage';
 
 export type Selection = { kind: 'screen'; id: string } | { kind: 'edge'; id: string } | null;
 
@@ -41,11 +61,30 @@ export interface FileContentState {
   error?: string;
 }
 
+interface RuntimeInput {
+  captures: RuntimeCapture[];
+  observations: RuntimeObservation[];
+  images: Record<string, string>;
+}
+
+const noRuntime = (): RuntimeInput => ({ captures: [], observations: [], images: {} });
+
 interface ExplorerState {
-  /** Project shown: the analysis result with runtime captures overlaid. */
+  /** Project shown: the analysis result with user corrections and runtime captures applied. */
   project: AppProject;
-  /** The analysis result (or demo) before runtime captures are applied. */
+  /** The analysis result (or demo) as produced, before corrections and runtime. */
   baseProject: AppProject;
+  /** The graph drawn on the canvas (feature groups, references, parallel edges). */
+  graph: FlowGraph;
+  corrections: GraphCorrections;
+  /** Edges the user marked as incorrect (not in `project`). */
+  hiddenEdges: NavigationEdge[];
+  staleCorrections: StaleCorrection[];
+  /** Observed transitions that match several edges (none verified). */
+  ambiguous: Array<{ from: string; to: string; candidates: string[] }>;
+  runtime: RuntimeInput;
+  view: ViewPrefs;
+  filters: FlowFilters;
   workspace: Workspace;
   fileContents: Record<string, FileContentState>;
   index: ProjectIndex;
@@ -56,6 +95,8 @@ interface ExplorerState {
   focusRequest: { target: Exclude<Selection, null>; nonce: number } | null;
   /** Bumped whenever node positions are replaced wholesale (auto layout). */
   layoutVersion: number;
+  /** How the current positions were produced; the canvas only fits the view after a full layout. */
+  lastLayoutMode: LayoutMode;
   positions: Positions;
   pinned: Positions;
   layoutStatus: LayoutStatus;
@@ -64,8 +105,12 @@ interface ExplorerState {
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
 
+  /**
+   * Shows an analysis result. Re-analysis of the open project keeps every
+   * screen where it was and only places new ones.
+   */
   loadProject(project: AppProject): Promise<void>;
-  /** Re-applies runtime captures and observed transitions to the loaded project (no relayout). */
+  /** Re-applies runtime captures and observed transitions to the loaded project. */
   applyRuntimeOverlay(captures: RuntimeCapture[], observations: RuntimeObservation[], images: Record<string, string>): void;
   /** Shows the bundled demo project. */
   loadDemo(): Promise<void>;
@@ -87,10 +132,25 @@ interface ExplorerState {
   closeCode(): void;
   highlightFile(fileId: string | null): void;
   pinNode(id: string, position: XY): void;
+  pinNodes(positions: Positions): void;
+  /** Re-arranges everything automatically and forgets manual positions. */
   resetLayout(): Promise<void>;
   setPaletteOpen(open: boolean): void;
   toggleLeftPanel(): void;
   toggleRightPanel(): void;
+
+  /** Marks an edge as incorrect (an added edge is deleted instead). */
+  hideEdge(edgeId: string): void;
+  restoreEdge(correctionKey: string): void;
+  /** Sets (or clears, with null) the destination of an edge analysis could not resolve. */
+  resolveEdge(edgeId: string, screenId: string | null): void;
+  addEdge(input: { from: string; to: string; label: string; kind: NavigationKind }): string;
+  /** Moves a screen to another feature group (null: back to the detected one). */
+  setFeature(screenId: string, feature: string | null): void;
+  resetCorrections(): void;
+  setFilters(filters: Partial<FlowFilters>): void;
+  resetFilters(): void;
+  setView(view: Partial<ViewPrefs>): Promise<void>;
 }
 
 function codeTargetFor(state: Pick<ExplorerState, 'index'>, selection: Selection): CodeTarget | null {
@@ -101,11 +161,36 @@ function codeTargetFor(state: Pick<ExplorerState, 'index'>, selection: Selection
   return state.index.edgesById.get(selection.id)?.trigger.location ?? null;
 }
 
+/** Everything shown, derived from the analysis result, corrections, runtime input and view options. */
+function derive(base: AppProject, corrections: GraphCorrections, runtime: RuntimeInput, view: ViewPrefs) {
+  const corrected = applyCorrections(base, corrections);
+  const project = applyRuntime(corrected.project, runtime.captures, runtime.observations, (c) => runtime.images[c.id]);
+  const graph = buildFlowGraph(project, { ...view, featureOverrides: corrections.featureOverrides });
+  return {
+    project,
+    index: buildProjectIndex(project),
+    graph,
+    hiddenEdges: corrected.hidden,
+    staleCorrections: corrected.stale,
+    ambiguous: ambiguousObservations(project, runtime.observations),
+  };
+}
+
+const sameNodes = (graph: FlowGraph, positions: Positions) =>
+  graph.nodes.length === Object.keys(positions).length && graph.nodes.every((n) => n.id in positions);
+
 export interface StoreDeps {
   agent: AgentApi;
   /** Delay between analysis status polls. */
   pollMs?: number;
 }
+
+/**
+ * - `fresh`: a newly opened project; manual positions from a previous session win.
+ * - `stable`: same project, changed graph; existing nodes stay where they are.
+ * - `reset`: the user asked for a full automatic layout.
+ */
+export type LayoutMode = 'fresh' | 'stable' | 'reset';
 
 export function createExplorerStore(initial: AppProject, deps: StoreDeps = { agent: agentApi }) {
   const { agent } = deps;
@@ -143,32 +228,68 @@ export function createExplorerStore(initial: AppProject, deps: StoreDeps = { age
     const fail = (error: unknown) =>
       set((s) => ({ workspace: { ...s.workspace, status: 'error', analysisId: undefined, progress: undefined, error: error instanceof Error ? error.message : String(error) } }));
 
-    async function layout(project: AppProject, pinned: Positions) {
+    let layoutSeq = 0;
+    async function layout(mode: LayoutMode) {
+      const seq = ++layoutSeq;
+      const { graph, project } = get();
       set({ layoutStatus: 'computing', layoutError: null });
       try {
-        const auto = await computeAutoLayout(project);
-        if (get().baseProject !== project) return; // a newer project replaced this one
-        set((s) => ({
-          positions: mergeLayout(auto, pinned),
-          layoutStatus: 'ready',
-          layoutVersion: s.layoutVersion + 1,
-        }));
+        const entries = new Set(project.screens.filter((s) => s.isEntryPoint).map((s) => s.id));
+        const auto = await computeAutoLayout(graph, entries);
+        if (seq !== layoutSeq) return; // superseded by a newer layout request
+        // Read these now: the user may have moved nodes while the layout was computed.
+        const { pinned, positions: previous } = get();
+        const types = new Map(graph.nodes.map((n) => [n.id, n.type]));
+        const sizeOf = (id: string) => NODE_SIZES[types.get(id) ?? 'screen'];
+        let positions: Positions;
+        if (mode === 'stable') {
+          positions = stabilizeLayout(previous, auto, graph, pinned, sizeOf);
+        } else {
+          const kept = mode === 'reset' ? {} : pinned;
+          positions = resolveOverlaps(mergeLayout(auto, kept), sizeOf, new Set(Object.keys(kept).filter((id) => id in auto)));
+        }
+        set((s) => ({ positions, layoutStatus: 'ready', layoutVersion: s.layoutVersion + 1, lastLayoutMode: mode }));
+        // The graph changed while this layout was computed (e.g. a correction): place what is new.
+        if (!sameNodes(get().graph, positions)) await layout('stable');
       } catch (error) {
-        set({ layoutStatus: 'error', layoutError: error instanceof Error ? error.message : String(error) });
+        if (seq === layoutSeq) set({ layoutStatus: 'error', layoutError: error instanceof Error ? error.message : String(error) });
       }
     }
 
+    /** Recomputes the derived project and graph; places new nodes without moving existing ones. */
+    function refresh(changes: Partial<Pick<ExplorerState, 'corrections' | 'runtime' | 'view'>> = {}) {
+      const s = { ...get(), ...changes };
+      const derived = derive(s.baseProject, s.corrections, s.runtime, s.view);
+      const selectionGone =
+        (s.selection?.kind === 'edge' && !derived.index.edgesById.has(s.selection.id)) || (s.selection?.kind === 'screen' && !derived.index.screensById.has(s.selection.id));
+      set({ ...changes, ...derived, ...(selectionGone ? { selection: null } : {}) });
+      if (get().layoutStatus !== 'computing' && !sameNodes(derived.graph, get().positions)) void layout('stable');
+    }
+
+    function updateCorrections(update: (c: GraphCorrections) => GraphCorrections) {
+      const corrections = update(get().corrections);
+      saveCorrections(get().baseProject.id, corrections);
+      refresh({ corrections });
+    }
+
+    const view = loadViewPrefs();
+    const first = derive(initial, emptyCorrections(), noRuntime(), view);
+
     return {
-      project: initial,
+      ...first,
       baseProject: initial,
+      corrections: emptyCorrections(),
+      runtime: noRuntime(),
+      view,
+      filters: defaultFilters(),
       workspace: { status: 'welcome', hasResult: false },
       fileContents: {},
-      index: buildProjectIndex(initial),
       selection: null,
       highlightedFileId: null,
       code: null,
       focusRequest: null,
       layoutVersion: 0,
+      lastLayoutMode: 'fresh',
       positions: {},
       pinned: {},
       layoutStatus: 'idle',
@@ -178,22 +299,29 @@ export function createExplorerStore(initial: AppProject, deps: StoreDeps = { age
       rightPanelOpen: true,
 
       async loadProject(project) {
-        const pinned = loadPinnedLayout(project.id);
+        const prev = get();
+        const reanalysis = prev.baseProject.id === project.id && prev.layoutVersion > 0 && Object.keys(prev.positions).length > 0;
+        const corrections = reanalysis ? prev.corrections : loadCorrections(project.id);
+        const pinned = reanalysis ? prev.pinned : loadPinnedLayout(project.id);
+        const runtime = reanalysis ? prev.runtime : noRuntime();
+        const derived = derive(project, corrections, runtime, prev.view);
         set({
-          project,
+          ...derived,
           baseProject: project,
-          index: buildProjectIndex(project),
-          selection: null,
-          highlightedFileId: null,
-          code: null,
+          corrections,
+          runtime,
           pinned,
+          filters: reanalysis ? prev.filters : defaultFilters(),
+          selection: reanalysis && prev.selection && (prev.selection.kind === 'screen' ? derived.index.screensById.has(prev.selection.id) : derived.index.edgesById.has(prev.selection.id)) ? prev.selection : null,
+          highlightedFileId: null,
+          code: reanalysis ? prev.code : null,
+          ...(reanalysis ? {} : { positions: {} }),
         });
-        await layout(project, pinned);
+        await layout(reanalysis ? 'stable' : 'fresh');
       },
 
       applyRuntimeOverlay(captures, observations, images) {
-        const project = applyRuntime(get().baseProject, captures, observations, (c) => images[c.id]);
-        set({ project, index: buildProjectIndex(project) });
+        refresh({ runtime: { captures, observations, images } });
       },
 
       async loadDemo() {
@@ -284,15 +412,19 @@ export function createExplorerStore(initial: AppProject, deps: StoreDeps = { age
       },
 
       pinNode(id, position) {
-        const pinned = { ...get().pinned, [id]: position };
-        set((s) => ({ pinned, positions: { ...s.positions, [id]: position } }));
-        savePinnedLayout(get().project.id, pinned);
+        get().pinNodes({ [id]: position });
+      },
+
+      pinNodes(moved) {
+        const pinned = { ...get().pinned, ...moved };
+        set((s) => ({ pinned, positions: { ...s.positions, ...moved } }));
+        savePinnedLayout(get().baseProject.id, pinned);
       },
 
       async resetLayout() {
         set({ pinned: {} });
-        savePinnedLayout(get().project.id, {});
-        await layout(get().project, {});
+        savePinnedLayout(get().baseProject.id, {});
+        await layout('reset');
       },
 
       setPaletteOpen(open) {
@@ -305,6 +437,70 @@ export function createExplorerStore(initial: AppProject, deps: StoreDeps = { age
 
       toggleRightPanel() {
         set((s) => ({ rightPanelOpen: !s.rightPanelOpen }));
+      },
+
+      hideEdge(edgeId) {
+        const edge = get().index.edgesById.get(edgeId);
+        const key = edge?.correction?.key;
+        if (!edge || !key) return;
+        updateCorrections((c) =>
+          edge.correction?.addedByUser
+            ? { ...c, addedEdges: c.addedEdges.filter((m) => m.id !== key) }
+            : { ...c, hiddenEdges: c.hiddenEdges.includes(key) ? c.hiddenEdges : [...c.hiddenEdges, key] },
+        );
+      },
+
+      restoreEdge(key) {
+        updateCorrections((c) => ({ ...c, hiddenEdges: c.hiddenEdges.filter((k) => k !== key) }));
+      },
+
+      resolveEdge(edgeId, screenId) {
+        const edge = get().index.edgesById.get(edgeId);
+        const key = edge?.correction?.key;
+        if (!edge || !key || (edge.to !== null && !edge.correction?.resolvedByUser)) return;
+        updateCorrections((c) => {
+          const edgeTargets = { ...c.edgeTargets };
+          if (screenId) edgeTargets[key] = screenId;
+          else delete edgeTargets[key];
+          return { ...c, edgeTargets };
+        });
+      },
+
+      addEdge({ from, to, label, kind }) {
+        const id = `${MANUAL_EDGE_PREFIX}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+        updateCorrections((c) => ({ ...c, addedEdges: [...c.addedEdges, { id, from, to, label: label.trim() || 'Added by hand', kind, createdAt: new Date().toISOString() }] }));
+        return id;
+      },
+
+      setFeature(screenId, feature) {
+        updateCorrections((c) => {
+          const featureOverrides = { ...c.featureOverrides };
+          const value = feature?.trim().toLowerCase();
+          if (value) featureOverrides[screenId] = value;
+          else delete featureOverrides[screenId];
+          return { ...c, featureOverrides };
+        });
+        // Group membership changed: keep positions, the group boxes follow their screens.
+      },
+
+      resetCorrections() {
+        updateCorrections(() => emptyCorrections());
+      },
+
+      setFilters(filters) {
+        set((s) => ({ filters: { ...s.filters, ...filters } }));
+      },
+
+      resetFilters() {
+        set({ filters: defaultFilters() });
+      },
+
+      async setView(change) {
+        const view = { ...get().view, ...change };
+        saveViewPrefs(view);
+        set({ view, ...derive(get().baseProject, get().corrections, get().runtime, view) });
+        // Grouping changes the arrangement itself; manual positions are kept.
+        await layout('fresh');
       },
     };
   });

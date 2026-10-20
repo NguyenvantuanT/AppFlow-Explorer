@@ -17,6 +17,7 @@ import type {
 export function edgeStatus(edge: NavigationEdge): EdgeStatus {
   if (edge.to === null) return 'unresolved';
   if (edge.evidence.some((e) => e.source === 'runtime')) return 'verified';
+  if (edge.evidence.some((e) => e.source === 'manual')) return 'manual';
   if (edge.evidence.some((e) => e.source === 'declared')) return 'declared';
   if (edge.evidence.some((e) => e.source === 'static')) return 'inferred';
   return 'unresolved';
@@ -45,7 +46,7 @@ export function buildProjectIndex(project: AppProject): ProjectIndex {
   const incoming = new Map<string, NavigationEdge[]>();
   const outgoing = new Map<string, NavigationEdge[]>();
   const screensByFile = new Map<string, Screen[]>();
-  const statusCounts: Record<EdgeStatus, number> = { verified: 0, declared: 0, inferred: 0, unresolved: 0 };
+  const statusCounts: Record<EdgeStatus, number> = { verified: 0, manual: 0, declared: 0, inferred: 0, unresolved: 0 };
 
   for (const screen of project.screens) push(screensByFile, screen.location.fileId, screen);
   for (const edge of project.edges) {
@@ -61,8 +62,11 @@ export function buildProjectIndex(project: AppProject): ProjectIndex {
  * Overlays runtime captures and observed transitions on an analyzed project:
  * - each screen with an assigned capture gets a `runtime` state (latest first);
  * - an observed transition adds `runtime` evidence to the edge between the two
- *   screens only when exactly one such edge exists — an ambiguous observation
- *   never verifies a guessed edge, and no edge is ever created from it.
+ *   screens when exactly one such edge exists;
+ * - with several candidate edges, none is verified (the observation cannot
+ *   tell which one fired);
+ * - with no candidate edge, an observed-only edge is added. Its trigger is
+ *   reported as unknown, never guessed.
  */
 export function applyRuntime(
   project: AppProject,
@@ -85,16 +89,55 @@ export function applyRuntime(
     }));
     return { ...s, states: [...runtime, ...s.states.filter((st) => st.provenance !== 'runtime')] };
   });
-  const edges = project.edges.map((e) => ({ ...e, evidence: e.evidence.filter((ev) => ev.source !== 'runtime') }));
-  for (const o of observations) {
+  const edges = project.edges
+    .filter((e) => !e.id.startsWith(RUNTIME_EDGE_PREFIX))
+    // Re-applying replaces only what a previous overlay added; other runtime evidence is kept.
+    .map((e) => ({ ...e, evidence: e.evidence.filter((ev) => ev.adapter !== RUNTIME_OVERLAY) }));
+  const screenIds = new Set(project.screens.map((s) => s.id));
+  const observedOnly = new Map<string, NavigationEdge>();
+  for (const o of [...observations].sort((a, b) => a.observedAt.localeCompare(b.observedAt))) {
+    if (!screenIds.has(o.fromScreenId) || !screenIds.has(o.toScreenId)) continue;
+    const runtimeEvidence = { source: 'runtime' as const, detail: 'Transition observed while the app was running', observedAt: o.observedAt, confidence: 'high' as const, adapter: RUNTIME_OVERLAY };
     const matching = edges.filter((e) => e.from === o.fromScreenId && e.to === o.toScreenId);
-    if (matching.length !== 1) continue;
-    const ev = matching[0]!.evidence;
-    if (!ev.some((x) => x.source === 'runtime')) {
-      ev.push({ source: 'runtime', detail: 'Transition observed while the app was running', observedAt: o.observedAt, confidence: 'high' });
+    if (matching.length === 1) {
+      const ev = matching[0]!.evidence;
+      if (!ev.some((x) => x.source === 'runtime')) ev.push(runtimeEvidence);
+    } else if (matching.length === 0) {
+      // Seen in the running app, but analysis found no code path: keep it as an
+      // observed-only edge. Its trigger is unknown and is not guessed.
+      const id = runtimeEdgeId(o.fromScreenId, o.toScreenId);
+      if (!observedOnly.has(id)) {
+        observedOnly.set(id, {
+          id,
+          from: o.fromScreenId,
+          to: o.toScreenId,
+          kind: 'push',
+          trigger: { label: 'Observed at runtime', description: 'Seen while the app was running; the action that triggered it is unknown.' },
+          evidence: [runtimeEvidence],
+        });
+      }
     }
+    // Several candidate edges: the observation cannot tell which one fired, so none is verified.
   }
-  return { ...project, screens, edges };
+  return { ...project, screens, edges: [...edges, ...observedOnly.values()] };
+}
+
+const RUNTIME_EDGE_PREFIX = 'runtime:';
+/** Marks evidence added by `applyRuntime`, so re-applying it is idempotent. */
+const RUNTIME_OVERLAY = 'runtime-capture';
+export const runtimeEdgeId = (from: string, to: string): string => `${RUNTIME_EDGE_PREFIX}${from}->${to}`;
+
+/**
+ * Observed transitions that match more than one edge. None of those edges is
+ * verified, because the observation cannot tell which one fired.
+ */
+export function ambiguousObservations(project: AppProject, observations: RuntimeObservation[]): Array<{ from: string; to: string; candidates: string[] }> {
+  const seen = new Map<string, { from: string; to: string; candidates: string[] }>();
+  for (const o of observations) {
+    const candidates = project.edges.filter((e) => e.from === o.fromScreenId && e.to === o.toScreenId).map((e) => e.id);
+    if (candidates.length > 1) seen.set(`${o.fromScreenId}->${o.toScreenId}`, { from: o.fromScreenId, to: o.toScreenId, candidates });
+  }
+  return [...seen.values()];
 }
 
 /** Returns human-readable integrity problems; an empty list means the project is consistent. */
