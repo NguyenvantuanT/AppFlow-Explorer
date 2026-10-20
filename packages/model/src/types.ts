@@ -317,8 +317,23 @@ export interface NavigationEdge {
   /** Why the destination is unknown (only meaningful when `to` is null). */
   unresolvedReason?: string;
   unresolvedKind?: UnresolvedKind;
+  /** Set when the navigation crosses between Flutter / React Native code and the app's own native code. */
+  bridge?: NativeBridge;
   /** Set when user corrections were applied (see `applyCorrections`). */
   correction?: EdgeCorrectionInfo;
+}
+
+/**
+ * How a navigation crosses from cross-platform code into native code or back:
+ * a Flutter MethodChannel, a React Native native module, or a native screen
+ * opening a Flutter engine at a route.
+ */
+export interface NativeBridge {
+  kind: 'method-channel' | 'native-module' | 'flutter-engine';
+  /** Channel or module name, e.g. `corebank/native`, `CookingTimer`. */
+  name?: string;
+  /** Method called across the bridge, e.g. `openScanner`. */
+  method?: string;
 }
 
 export interface EdgeCorrectionInfo {

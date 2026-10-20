@@ -1,4 +1,4 @@
-import { bestEdgeLocation, edgeStatus, featureLabel, featureOf, type AnalysisWarning, type EvidenceSource, type NavigationEdge, type Screen, type SourceLocation } from '@appflow/model';
+import { bestEdgeLocation, edgeStatus, featureLabel, featureOf, type AnalysisWarning, type EvidenceSource, type NativeBridge, type NavigationEdge, type Screen, type SourceLocation } from '@appflow/model';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Wireframe } from '../canvas/PhoneNode';
 import { CorrectionsOverview, EdgeCorrections, ScreenCorrections } from './Corrections';
@@ -261,6 +261,13 @@ function EvidenceTag({ source }: { source: EvidenceSource }) {
   return <span className={`shrink-0 rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${tag.style}`}>{tag.label}</span>;
 }
 
+/** How the navigation crosses between Flutter / React Native and native code. */
+function bridgeText(bridge: NativeBridge): string {
+  if (bridge.kind === 'method-channel') return `MethodChannel '${bridge.name}' · ${bridge.method}`;
+  if (bridge.kind === 'native-module') return `NativeModules.${bridge.name}.${bridge.method}()`;
+  return `Opens Flutter at ${bridge.name ?? 'its initial route'}`;
+}
+
 function EdgeDetails({ edge }: { edge: NavigationEdge }) {
   const index = useExplorer((s) => s.index);
   const select = useExplorer((s) => s.select);
@@ -337,6 +344,11 @@ function EdgeDetails({ edge }: { edge: NavigationEdge }) {
         {edge.trigger.handler && (
           <Field label="Handler">
             <span className="font-mono text-[12px]">{edge.trigger.handler}</span>
+          </Field>
+        )}
+        {edge.bridge && (
+          <Field label="Bridge">
+            <span className="font-mono text-[12px]">{bridgeText(edge.bridge)}</span>
           </Field>
         )}
       </Section>

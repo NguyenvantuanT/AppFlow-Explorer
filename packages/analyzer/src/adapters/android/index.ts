@@ -1,6 +1,6 @@
 import { lookup } from '../shared';
 import { ANDROID_UI_STATES } from '../uiStateRules';
-import type { Evidence, NavigationKind, ScreenKind, ScreenPlatformKind, WidgetRef } from '@appflow/model';
+import type { Evidence, NavigationKind, PlatformId, ScreenKind, ScreenPlatformKind, WidgetRef } from '@appflow/model';
 import type { ProjectGraphBuilder } from '../../core/builder';
 import { CodeIndex, loc, routeMatcher } from '../../core/codeIndex';
 import { basename, dirname, humanize, joinPath, type AnalysisAdapter, type AnalysisContext, type DetectionMatch } from '../../core/types';
@@ -130,12 +130,7 @@ export const androidAdapter: AnalysisAdapter = {
       });
     }
 
-    if (hostOf?.platform === 'flutter') {
-      out.warn({ code: 'host-module', severity: 'info', message: `${match.root}/ is the Android host of a Flutter app; it is listed as a module but its native screens are not analyzed.` });
-      return;
-    }
-
-    await analyzeAndroid(ctx, match, out, modules, gradle, !!hostOf);
+    await analyzeAndroid(ctx, match, out, modules, gradle, hostOf?.platform);
   },
 };
 
@@ -145,7 +140,7 @@ async function analyzeAndroid(
   out: ProjectGraphBuilder,
   modules: AndroidModuleDir[],
   gradle: Map<string, GradleInfo>,
-  isReactNativeHost: boolean,
+  host: PlatformId | undefined,
 ): Promise<void> {
   // ---- Code ---------------------------------------------------------------------------------------
   const index = new CodeIndex();
@@ -182,7 +177,7 @@ async function analyzeAndroid(
     if (index.extendsAny(name, ACTIVITY_BASES)) classScreen(name, 'activity');
   }
   for (const h of hostActivities) {
-    out.warn({ code: 'host-activity', severity: 'info', message: `${h} hosts the ${isReactNativeHost ? 'React Native' : 'cross-platform'} UI and is not shown as a native screen.`, location: loc(index.classNamed(h)!.file, index.classNamed(h)!.fact.line) });
+    out.warn({ code: 'host-activity', severity: 'info', message: `${h} hosts the ${host === 'react-native' ? 'React Native' : host === 'flutter' ? 'Flutter' : 'cross-platform'} UI and is not shown as a native screen.`, location: loc(index.classNamed(h)!.file, index.classNamed(h)!.fact.line) });
   }
   const declaredActivities = new Set<string>();
   for (const m of modules) {
@@ -408,6 +403,8 @@ async function analyzeAndroid(
       let refs = arg?.typeRefs ?? [];
       if (arg && /^\w+$/.test(arg.text)) refs = facts.variables.find((v) => v.name === arg.text && v.enclosingFunction === call.enclosingFunction)?.value.typeRefs ?? refs;
       const target = refs.find((t) => screens.get(t)?.platformKind === 'activity');
+      // Opening the Flutter / React Native UI is drawn by the native bridge pass.
+      if (!target && (refs.some((t) => hostActivities.has(t) || HOST_ACTIVITIES.has(t)) || /\bFlutter(Activity|FragmentActivity)\b/.test(arg?.text ?? ''))) continue;
       if (target) intent = { kind: 'push', to: target, confidence: 'medium' };
       else if (/ACTION_|Intent\.ACTION|Uri\.parse|"android\.intent/.test(arg?.text ?? '') || refs.length === 1) implicitIntents++;
       else intent = { kind: 'push', to: null, confidence: 'low', reason: `The Intent \`${truncate(arg?.text ?? '?', 60)}\` does not name an activity of this project.`, unresolvedKind: 'dynamic' };
@@ -447,6 +444,8 @@ async function analyzeAndroid(
 
     const froms = fromScreens(call, facts, file);
     if (!froms.length) {
+      // Native code reached from Flutter / React Native through a bridge (MethodChannel handlers, native modules).
+      if (host || hostActivities.has(call.enclosingClass ?? '')) continue;
       out.warn({ code: 'navigation-outside-screen', severity: 'info', message: `${call.callee} in ${call.enclosingClass ?? call.enclosingFunction ?? 'top-level code'} could not be attributed to a screen.`, location: loc(file, call.line) });
       continue;
     }

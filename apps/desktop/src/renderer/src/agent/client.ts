@@ -1,4 +1,7 @@
 import type { AppProject } from '@appflow/model';
+import type { SampleProject } from '../../../preload/bridge';
+
+export type { SampleProject };
 
 /** Mirrors the agent API contracts (packages/agent/src/schemas.ts). */
 export interface ProjectInfo {
@@ -51,6 +54,8 @@ export class AgentError extends Error {
 export interface AgentApi {
   available(): boolean;
   pickProjectDirectory(): Promise<string | null>;
+  /** Sample projects bundled with the app (desktop app only). */
+  sampleProjects(): Promise<SampleProject[]>;
   registerProject(path: string): Promise<ProjectInfo>;
   startAnalysis(projectId: string): Promise<AnalysisInfo>;
   getAnalysis(analysisId: string): Promise<AnalysisInfo>;
@@ -91,6 +96,7 @@ async function call<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: u
 export const agentApi: AgentApi = {
   available: () => !!window.appflow?.agent,
   pickProjectDirectory: async () => (window.appflow ? window.appflow.pickProjectDirectory() : null),
+  sampleProjects: async () => (window.appflow?.sampleProjects ? window.appflow.sampleProjects() : []),
   registerProject: async (path) => (await call<{ project: ProjectInfo }>('POST', '/v1/projects', { path })).project,
   startAnalysis: async (projectId) => (await call<{ analysis: AnalysisInfo }>('POST', `/v1/projects/${projectId}/analyses`, {})).analysis,
   getAnalysis: async (id) => (await call<{ analysis: AnalysisInfo }>('GET', `/v1/analyses/${id}`)).analysis,

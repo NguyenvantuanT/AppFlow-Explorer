@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, View } from 'react-native';
+import { Button, NativeModules, View } from 'react-native';
 
 export default function RecipeDetailScreen({ navigation, route }) {
   const handleStartCooking = () => {
@@ -12,6 +12,7 @@ export default function RecipeDetailScreen({ navigation, route }) {
       <Button title="Start cooking" onPress={handleStartCooking} />
       <Button title="Share" onPress={() => navigation.navigate('Share')} />
       <Button title="Up next" onPress={() => navigation.navigate(next)} />
+      <Button title="Buy ingredients" onPress={() => NativeModules.Payments.openCheckout(route.params.id)} />
     </View>
   );
 }

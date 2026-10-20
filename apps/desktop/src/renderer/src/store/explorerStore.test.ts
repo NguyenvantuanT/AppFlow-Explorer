@@ -23,6 +23,7 @@ function fakeAgent(statuses: AnalysisInfo['status'][], overrides: Partial<AgentA
   return {
     available: () => true,
     pickProjectDirectory: vi.fn(async () => '/work/demo-app'),
+    sampleProjects: vi.fn(async () => []),
     registerProject: vi.fn(async () => ({ id: 'p1', name: 'demo-app', rootPath: '/work/demo-app', frameworks: [] })),
     startAnalysis: vi.fn(async () => info('queued')),
     getAnalysis: vi.fn(async () => info(statuses[Math.min(polls++, statuses.length - 1)]!)),

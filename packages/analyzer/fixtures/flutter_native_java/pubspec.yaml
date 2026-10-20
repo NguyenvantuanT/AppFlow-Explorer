@@ -1,0 +1,10 @@
+name: corebank_java
+description: Flutter app with custom native screens (scanner, KYC) reached through a MethodChannel.
+version: 2.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter

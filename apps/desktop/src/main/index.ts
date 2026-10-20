@@ -4,6 +4,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { AgentHost, type AgentRequest } from './agentHost';
 import { editorUrl, EDITORS, parseOpenRequest } from './editor';
 import { EXPORT_TYPES, parseSaveRequest } from './exportFile';
+import { listSamples } from './samples';
 
 const isDev = !app.isPackaged && Boolean(process.env['ELECTRON_RENDERER_URL']);
 const agent = new AgentHost();
@@ -65,6 +66,12 @@ ipcMain.handle('project:initial-path', (event) => {
   const path = initialProject;
   initialProject = null;
   return path;
+});
+
+/** Bundled samples in a packaged app; the analyzer's fixtures when run from the repo. */
+ipcMain.handle('project:samples', (event) => {
+  if (!fromOwnWindow(event)) return [];
+  return listSamples(app.isPackaged ? join(process.resourcesPath, 'samples') : join(app.getAppPath(), '../../packages/analyzer/fixtures'));
 });
 
 ipcMain.handle('agent:request', async (event, req: AgentRequest) => {

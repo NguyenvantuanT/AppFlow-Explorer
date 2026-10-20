@@ -88,7 +88,7 @@ describe('engine behavior', () => {
 });
 
 describe('source locations', () => {
-  it.each(['flutter_shop', 'flutter_auto_route', 'android_tasky', 'ios_bookshelf', 'rn_recipebox'])('%s: every location is a real file and line, with the text it pointed to', async (name) => {
+  it.each(['flutter_shop', 'flutter_auto_route', 'android_tasky', 'ios_bookshelf', 'rn_recipebox', 'flutter_native', 'flutter_native_java'])('%s: every location is a real file and line, with the text it pointed to', async (name) => {
     const root = path.join(fixtures, name);
     const { project } = await analyzeProject(root, { adapters: defaultAdapters });
     const files = new Map(project.files.map((f) => [f.id, f]));

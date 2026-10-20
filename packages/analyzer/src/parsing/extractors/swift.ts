@@ -87,6 +87,8 @@ export function extractSwift(root: Node): FileFacts {
         for (const a of namedChildren(c).filter((x) => x.type === 'value_argument')) {
           const label = a.childForFieldName('name');
           const values = namedChildren(a).filter((x) => x !== label && x.type !== 'value_argument_label');
+          // `nil` is an anonymous token, so it has no named node
+          if (!values.length && /:\s*nil\s*$/.test(a.text)) values.push(...a.children.filter((x): x is Node => x?.type === 'nil'));
           out.push({ node: a, fact: buildArg(values, spec, label?.text) });
         }
       } else if (c.type === 'lambda_literal') {

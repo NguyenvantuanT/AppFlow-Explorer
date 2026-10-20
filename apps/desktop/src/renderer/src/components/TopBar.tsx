@@ -2,6 +2,7 @@ import type { PlatformId } from '@appflow/model';
 import { agentApi } from '../agent/client';
 import { useExplorer } from '../store';
 import { ExportMenu } from './ExportMenu';
+import { SamplesMenu } from './SampleProjects';
 import { ImportIcon, KeyboardIcon, ReportIcon, SearchIcon, SidebarLeftIcon, SidebarRightIcon, WidgetIcon } from './icons';
 
 const PLATFORM_LABEL: Record<PlatformId, string> = { flutter: 'Flutter', android: 'Android', ios: 'iOS', 'react-native': 'React Native' };
@@ -91,6 +92,7 @@ export function TopBar() {
             <ImportIcon size={13} /> Open project
           </button>
         )}
+        {showsProject && <SamplesMenu disabled={workspace.status === 'analyzing'} />}
         {showsProject && (
           <>
             <button
