@@ -10,6 +10,14 @@ export const STATUS_META: Record<
     color: 'var(--color-primary)',
     description: 'Observed while exploring the running app.',
   },
+  manual: {
+    label: 'Set by you',
+    short: 'Manual',
+    color: '#5eead4',
+    dash: '12 4 2 4',
+    badgeDash: '5 2 1 2',
+    description: 'Added or completed by hand as a correction — not found by analysis and not observed at runtime.',
+  },
   declared: {
     label: 'Declared in config',
     short: 'Declared',

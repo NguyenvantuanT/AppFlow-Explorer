@@ -80,7 +80,10 @@ Each capture records:
 ### How captures affect the map
 
 - A screen counts as **captured** only when a screenshot is assigned to it. Launching the app captures nothing by itself, and coverage shows "N of M discovered screens captured".
-- Auto-capture records each transition from one detected screen to another. If **exactly one** edge connects those two screens, that edge gains `runtime` evidence and becomes **verified**. Ambiguous transitions verify nothing, and no edge is ever created from an observation.
+- Auto-capture records each transition from one detected screen to another:
+  - **Exactly one** edge connects the two screens: that edge gains `runtime` evidence and becomes **verified**.
+  - **Several** edges connect them: none is verified, because the observation cannot tell which one fired. The map lists this under "What this map does not know".
+  - **No** edge connects them: the map adds an observed-only edge labelled "Observed at runtime". Its trigger is reported as unknown and never guessed. See [flow-map.md](flow-map.md).
 - Screens that exist at runtime but were not found by static analysis cannot be detected (the detector only knows analyzed screen classes). Capture them manually and leave them unassigned, or assign them to the closest screen.
 
 ## Verifying the setup

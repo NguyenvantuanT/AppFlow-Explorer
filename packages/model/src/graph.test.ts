@@ -78,7 +78,7 @@ describe('buildProjectIndex', () => {
     expect(index.incoming.get('b')?.map((e) => e.id)).toEqual(['e1']);
     expect(index.incoming.get('a')?.map((e) => e.id)).toEqual(['e3']);
     expect(index.screensByFile.get('lib/a.dart')).toHaveLength(2);
-    expect(index.statusCounts).toEqual({ verified: 1, declared: 0, inferred: 1, unresolved: 1 });
+    expect(index.statusCounts).toEqual({ verified: 1, manual: 0, declared: 0, inferred: 1, unresolved: 1 });
   });
 });
 
@@ -115,7 +115,16 @@ describe('applyRuntime', () => {
     expect(twice.edges.map(edgeStatus)).toEqual(['inferred', 'inferred']);
 
     const none = applyRuntime(project([]), [], obs, () => undefined);
-    expect(none.edges).toEqual([]);
+    expect(none.edges.map((e) => [e.id, e.from, e.to, edgeStatus(e), e.trigger.label])).toEqual([['runtime:a->b', 'a', 'b', 'verified', 'Observed at runtime']]);
+  });
+
+  it('adds one observed-only edge per pair, ignores unknown screens, and is idempotent', () => {
+    const at = (t: string) => ({ id: t, sessionId: 's', fromScreenId: 'a', toScreenId: 'b', observedAt: t });
+    const obs = [at('2026-10-20T11:00:00Z'), at('2026-10-20T10:00:00Z'), { ...at('x'), toScreenId: 'ghost' }];
+    const once = applyRuntime(project([]), [], obs, () => undefined);
+    expect(once.edges).toHaveLength(1);
+    expect(once.edges[0]!.evidence[0]!.observedAt).toBe('2026-10-20T10:00:00Z');
+    expect(applyRuntime(once, [], obs, () => undefined).edges).toEqual(once.edges);
   });
 });
 

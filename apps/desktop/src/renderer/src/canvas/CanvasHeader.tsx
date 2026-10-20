@@ -5,8 +5,8 @@ import { STATUS_META } from '../components/StatusBadge';
 import { useExplorer } from '../store';
 import { EDGE_COLORS } from './NavEdge';
 
-const ORDER: EdgeStatus[] = ['verified', 'declared', 'inferred', 'unresolved'];
-const DASH: Record<EdgeStatus, string | undefined> = { verified: undefined, declared: undefined, inferred: '5 4', unresolved: '2 4' };
+const ORDER: EdgeStatus[] = ['verified', 'manual', 'declared', 'inferred', 'unresolved'];
+const DASH: Record<EdgeStatus, string | undefined> = { verified: undefined, manual: '7 3 2 3', declared: undefined, inferred: '5 4', unresolved: '2 4' };
 
 function ZoomControl() {
   const rf = useReactFlow();

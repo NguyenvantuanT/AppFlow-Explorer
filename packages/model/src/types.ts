@@ -63,14 +63,17 @@ export interface SourceFile {
  */
 export type Confidence = 'high' | 'medium' | 'low';
 
+export type EvidenceSource = 'runtime' | 'declared' | 'static' | 'manual';
+
 /** A single observation supporting an entity or relationship. */
 export interface Evidence {
   /**
    * - `runtime`: observed in the running app.
    * - `declared`: explicit configuration (route table, navigation graph, storyboard segue).
    * - `static`: inferred from source code.
+   * - `manual`: asserted by the user as a graph correction.
    */
-  source: 'runtime' | 'declared' | 'static';
+  source: EvidenceSource;
   detail: string;
   location?: SourceLocation;
   observedAt?: string;
@@ -285,16 +288,28 @@ export interface NavigationEdge {
   /** Why the destination is unknown (only meaningful when `to` is null). */
   unresolvedReason?: string;
   unresolvedKind?: UnresolvedKind;
+  /** Set when user corrections were applied (see `applyCorrections`). */
+  correction?: EdgeCorrectionInfo;
+}
+
+export interface EdgeCorrectionInfo {
+  /** Key that user corrections refer to; stable across re-analysis. */
+  key: string;
+  /** The user chose the destination of an edge that analysis could not resolve. */
+  resolvedByUser?: boolean;
+  /** The user added this edge; it does not come from analysis. */
+  addedByUser?: boolean;
 }
 
 /**
  * Derived, never stored:
  * - `verified`: observed at runtime.
+ * - `manual`: added or completed by the user; not verified.
  * - `declared`: explicit navigation configuration.
  * - `inferred`: only supported by static analysis of code.
  * - `unresolved`: destination or evidence could not be determined.
  */
-export type EdgeStatus = 'verified' | 'declared' | 'inferred' | 'unresolved';
+export type EdgeStatus = 'verified' | 'manual' | 'declared' | 'inferred' | 'unresolved';
 
 export type AssetKind = 'image' | 'font' | 'data' | 'other';
 

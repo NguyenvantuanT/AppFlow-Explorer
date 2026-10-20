@@ -1,6 +1,6 @@
 import type { Screen, WidgetKind } from '@appflow/model';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { PhoneIcon } from '../components/icons';
 
 export interface PhoneNodeData extends Record<string, unknown> {
@@ -69,7 +69,11 @@ export function Wireframe({ screen }: { screen: Screen }) {
 
 export const PhoneNode = memo(function PhoneNode({ data, selected }: NodeProps<PhoneFlowNode>) {
   const { screen, fileHighlighted } = data;
-  const state = screen.states[0];
+  // A screen can have several UI states (e.g. several captures); the first is shown by default.
+  const [stateIndex, setStateIndex] = useState(0);
+  const stateCount = screen.states.length;
+  const current = Math.min(stateIndex, Math.max(stateCount - 1, 0));
+  const state = screen.states[current];
   const shot = state?.screenshot;
   const kindLabel = KIND_LABEL[screen.kind];
   const isOverlay = screen.kind !== 'page';
@@ -95,6 +99,19 @@ export const PhoneNode = memo(function PhoneNode({ data, selected }: NodeProps<P
             />
           ) : (
             <Wireframe screen={screen} />
+          )}
+          {stateCount > 1 && (
+            <div className="nodrag absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/65 px-1 py-0.5 text-[10px] text-white" title={state?.label}>
+              <button type="button" aria-label="Previous state" className="px-1 hover:text-[#93c5fd]" onClick={(e) => (e.stopPropagation(), setStateIndex((current - 1 + stateCount) % stateCount))}>
+                ‹
+              </button>
+              <span className="font-mono">
+                {current + 1}/{stateCount}
+              </span>
+              <button type="button" aria-label="Next state" className="px-1 hover:text-[#93c5fd]" onClick={(e) => (e.stopPropagation(), setStateIndex((current + 1) % stateCount))}>
+                ›
+              </button>
+            </div>
           )}
           {state?.provenance === 'mock' && (
             <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-white/80">
