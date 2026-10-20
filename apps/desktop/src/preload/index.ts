@@ -7,6 +7,7 @@ const bridge: DesktopBridge = {
   versions: { electron: process.versions.electron ?? '', chrome: process.versions.chrome ?? '' },
   pickProjectDirectory: () => ipcRenderer.invoke('project:pick-directory'),
   initialProjectPath: () => ipcRenderer.invoke('project:initial-path'),
+  sampleProjects: () => ipcRenderer.invoke('project:samples'),
   agent: {
     request: (method, path, body) => ipcRenderer.invoke('agent:request', { method, path, body }),
   },

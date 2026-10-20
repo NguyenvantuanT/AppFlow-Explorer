@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useExplorer } from '../store';
 import { forgetLastProject, loadSession } from '../store/session';
 import { ImportIcon, PhoneIcon } from './icons';
+import { SampleList } from './SampleProjects';
 
 const PLATFORMS = [
   { name: 'Flutter / Dart', detail: 'Navigator & routes tables, go_router, dialogs and sheets' },
@@ -76,6 +77,8 @@ export function WelcomeScreen() {
             </button>
           </div>
         )}
+
+        <SampleList />
 
         <div className="mt-8 grid grid-cols-2 gap-3">
           {PLATFORMS.map((p) => (

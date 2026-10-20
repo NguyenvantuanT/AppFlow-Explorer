@@ -3,6 +3,15 @@ export interface AgentResponse {
   body: unknown;
 }
 
+export interface SampleProject {
+  id: string;
+  name: string;
+  framework: 'flutter' | 'android' | 'ios' | 'react-native';
+  detail: string;
+  /** Absolute path of the sample folder. */
+  path: string;
+}
+
 export interface DesktopBridge {
   platform: string;
   versions: { electron: string; chrome: string };
@@ -10,6 +19,8 @@ export interface DesktopBridge {
   pickProjectDirectory(): Promise<string | null>;
   /** Project passed on the command line with `--open <dir>`, returned once. */
   initialProjectPath(): Promise<string | null>;
+  /** Sample projects that can be opened and analyzed like a folder. */
+  sampleProjects(): Promise<SampleProject[]>;
   /** Calls the local agent API (`/v1/...`) through the main process. */
   agent: {
     request(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<AgentResponse>;

@@ -1,6 +1,6 @@
 import { lookup } from '../shared';
 import { IOS_UI_STATES } from '../uiStateRules';
-import type { Dependency, Evidence, NavigationKind, ScreenKind, ScreenPlatformKind, WidgetRef } from '@appflow/model';
+import type { Dependency, Evidence, NavigationKind, PlatformId, ScreenKind, ScreenPlatformKind, WidgetRef } from '@appflow/model';
 import type { ProjectGraphBuilder } from '../../core/builder';
 import { CodeIndex, loc } from '../../core/codeIndex';
 import { basename, dirname, filesUnder, humanize, joinPath, type AnalysisAdapter, type AnalysisContext, type DetectionMatch } from '../../core/types';
@@ -16,6 +16,7 @@ interface IosDetection {
 const VC_BASES = new Set(['UIViewController', 'UITableViewController', 'UICollectionViewController', 'UIPageViewController', 'UIHostingController']);
 const CONTAINERS = new Set(['UINavigationController', 'UITabBarController', 'UISplitViewController']);
 const SYSTEM_CONTROLLERS = /^(UI(ActivityView|Alert|ImagePicker|DocumentPicker|DocumentBrowser|FontPicker|ColorPicker|ReferenceLibrary|PrinterPicker|Search|VideoEditor)Controller|SF\w*ViewController|MF\w+ViewController|PH\w+ViewController|CN\w+ViewController|AVPlayerViewController|SK\w+ViewController|QLPreviewController)$/;
+const HOST_CONTROLLERS = /^(Flutter\w*ViewController|RCTRootView\w*|RCTReactViewController)$/;
 const PUSH_CALLS: Record<string, NavigationKind> = lookup({
   pushViewController: 'push', show: 'push', showDetailViewController: 'push', setViewControllers: 'replace',
   present: 'modal', presentViewController: 'modal',
@@ -92,11 +93,7 @@ export const iosAdapter: AnalysisAdapter = {
         dependencies,
       });
     }
-    if (hostOf?.platform === 'flutter') {
-      out.warn({ code: 'host-module', severity: 'info', message: `${match.root}/ is the iOS host of a Flutter app; it is listed as a module but its native screens are not analyzed.` });
-      return;
-    }
-    await analyzeIos(ctx, match, out, !!hostOf);
+    await analyzeIos(ctx, match, out, hostOf?.platform);
   },
 };
 
@@ -120,7 +117,7 @@ async function iosDependencies(ctx: AnalysisContext, root: string): Promise<Depe
   return deps;
 }
 
-async function analyzeIos(ctx: AnalysisContext, match: DetectionMatch, out: ProjectGraphBuilder, isReactNativeHost: boolean): Promise<void> {
+async function analyzeIos(ctx: AnalysisContext, match: DetectionMatch, out: ProjectGraphBuilder, host: PlatformId | undefined): Promise<void> {
   const files = filesUnder(ctx.files, match.root);
   const index = new CodeIndex();
   const codeFiles = files.filter((f) => /\.(swift|m|mm|h)$/.test(f.path) && !/(Tests|UITests)\//.test(f.path));
@@ -299,6 +296,8 @@ async function analyzeIos(ctx: AnalysisContext, match: DetectionMatch, out: Proj
           strings = v.value.strings;
         }
       }
+      // Opening the Flutter / React Native UI is drawn by the native bridge pass.
+      if (refs.some((t) => HOST_CONTROLLERS.test(t)) && !vcTarget(refs, strings)) continue;
       if (refs.some((t) => SYSTEM_CONTROLLERS.test(t)) && !vcTarget(refs, strings)) {
         systemControllers++;
         continue;
@@ -352,7 +351,7 @@ async function analyzeIos(ctx: AnalysisContext, match: DetectionMatch, out: Proj
     const { call, file } = intent;
     const froms = intent.kind === 'tab' && intent.reason ? [intent.reason] : fromScreens(call, file);
     if (!froms.length) {
-      if (!appDelegates.has(call.enclosingClass ?? '')) {
+      if (!appDelegates.has(call.enclosingClass ?? '') && !host) {
         out.warn({ code: 'navigation-outside-screen', severity: 'info', message: `${call.callee} in ${call.enclosingClass ?? call.enclosingFunction ?? 'top-level code'} could not be attributed to a screen.`, location: loc(file, call.line) });
       }
       continue;
@@ -370,8 +369,8 @@ async function analyzeIos(ctx: AnalysisContext, match: DetectionMatch, out: Proj
       });
     }
   }
-  if (isReactNativeHost && !screens.size) {
-    out.warn({ code: 'host-module', severity: 'info', message: `${match.root}/ hosts the React Native app; no native screens were found.` });
+  if (host && !screens.size) {
+    out.warn({ code: 'host-module', severity: 'info', message: `${match.root}/ hosts the ${host === 'flutter' ? 'Flutter' : 'React Native'} app; no native screens were found.` });
   }
 
   // ---- Components, XIBs and assets ------------------------------------------------------------------

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { anchorOf, type AdapterRun, type NavigationEdge, type AppProject, type PlatformId, type SourceFile, type SourceFileKind, type SourceLanguage, type SourceLocation } from '@appflow/model';
 import { ProjectFs, type ScannedFile } from '../fs/projectFs';
 import { codeLanguageOf, extractFacts, type FileFacts } from '../parsing';
+import { connectNativeBridges } from './bridges';
 import { ProjectGraphBuilder } from './builder';
 import { collectDeepLinks } from './deepLinks';
 import { discoverUiStates } from './uiStates';
@@ -188,6 +189,15 @@ export async function analyzeProject(root: string, options: AnalyzeOptions): Pro
     const existing = runs.find((r) => r.id === adapter.id);
     if (existing) existing.status = existing.status === 'failed' || status === 'failed' ? 'failed' : status === 'partial' ? 'partial' : existing.status;
     else runs.push({ id: adapter.id, name: adapter.name, status, capabilities: adapter.capabilities.map((c) => c.description), durationMs: Date.now() - t0 });
+  }
+
+  report('assembling', 'Connecting native code', 90);
+  out.setAdapter('native-bridge');
+  try {
+    await connectNativeBridges({ files: scan.files, matches, facts, readText, signal }, out);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    out.warn({ code: 'native-bridge-failed', severity: 'warning', message: `Connecting Flutter / React Native code to native screens failed: ${error instanceof Error ? error.message : String(error)}` });
   }
 
   report('assembling', 'Finding UI states and deep links', 91);
