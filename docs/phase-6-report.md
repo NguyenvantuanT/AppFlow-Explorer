@@ -96,12 +96,20 @@ Cả 294 test đều pass (trước Phase 6 là 248). Typecheck sạch, build pr
 | `packages/agent` | 51 (+8) | `/changes`: 409 trước khi phân tích, `touch` không tính là sửa, thêm/xoá/sửa, sạch lại sau khi phân tích lại. **E2E qua HTTP:** token sai bị từ chối; trạng thái UI và deep link; báo cáo khớp dữ liệu; 4 định dạng export không lộ đường dẫn hay code; sửa file → `/changes` → phân tích lại thấy trạng thái mới |
 | `apps/desktop` | 84 (+22) | Phím tắt (modifier, đang gõ, Shift); IPC lưu file (phần mở rộng, tên file, kích thước); store (khôi phục phiên, phiên hỏng, source changes, export, export bị huỷ, minimap không layout lại); Report panel (liệt kê và đi tới flow chưa resolve, `Esc`); trợ giúp phím tắt liệt kê đủ bảng; banner thay đổi code; panel chi tiết hiện trạng thái trong code và deep link |
 
-Chưa kiểm tra thủ công trên app Electron thật trong phase này. Các luồng chính đã được test ở store, component và e2e qua HTTP, nhưng nên mở app với fixture `flutter_states` và thử:
+**Kiểm tra trên app thật.** App Electron (bản build production) được điều khiển bằng Playwright, mở một bản copy của fixture `flutter_states`:
 
-- Report, Export (cả 4 định dạng), bật/tắt minimap, `?`.
-- Sửa một file rồi chờ banner xuất hiện.
-- Đóng và mở lại app để kiểm tra phiên.
-- Duyệt bằng Tab, và bật Reduce motion trong hệ điều hành.
+- Phân tích xong, 3 màn hình có badge "◐".
+- `C` mở Report với số liệu đúng: 4 màn hình, 3/4 tới được, 1 flow chưa resolve ở `feed_screen.dart:28`, 4 deep link trong đó 1 đã resolve. `Esc` đóng Report.
+- `?` mở trợ giúp phím tắt. `M` ẩn và hiện minimap.
+- Export → SVG ghi ra file 4,4 KB, không chứa đường dẫn dự án.
+- Sửa `settings_screen.dart` → banner "1 file changed since this analysis (1 edited)" → **Re-analyze** → banner biến mất.
+
+Lần chạy này phát hiện và sửa 2 lỗi giao diện:
+
+- Nút Minimap ở toolbar dưới bị pill "What this map does not know" che. Nút đã được chuyển lên cạnh cụm zoom.
+- Thông báo export chứa đường dẫn đầy đủ, che nút của banner. Giờ thông báo chỉ hiện tên file; đường dẫn đầy đủ xem khi hover.
+
+Chưa thử bằng tay: điều hướng bằng Tab, chế độ Reduce motion của hệ điều hành, khôi phục phiên sau khi khởi động lại app.
 
 ## Hạn chế đã biết & bước tiếp theo
 
@@ -110,7 +118,7 @@ Chưa kiểm tra thủ công trên app Electron thật trong phase này. Các lu
 - Deep link chỉ resolve khi path khớp route đã khai báo. Link xử lý trong code (ví dụ `MainActivity` đọc intent) vẫn là chưa resolve.
 - Phát hiện thay đổi dùng polling 15 giây, nên banner có thể xuất hiện trễ tới 15 giây. Với dự án rất lớn, mỗi lần quét lại đi qua cả cây thư mục.
 - SVG export chỉ vẽ node đã có vị trí, không có ảnh chụp màn hình.
-- Chưa có test UI tự động trên Electron thật (Playwright).
+- Lần chạy Playwright ở trên là script tạm, chưa nằm trong repo hay CI.
 
 **Bước tiếp theo đề xuất:**
 
