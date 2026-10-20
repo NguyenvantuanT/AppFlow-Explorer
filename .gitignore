@@ -19,5 +19,4 @@ packages/analyzer/fixtures/**/ios/Flutter/ephemeral/
 packages/analyzer/fixtures/**/ios/Flutter/Generated.xcconfig
 packages/analyzer/fixtures/**/ios/Flutter/flutter_export_environment.sh
 packages/analyzer/fixtures/**/GeneratedPluginRegistrant.*
-packages/analyzer/fixtures/flutter_shop/android/local.properties
 packages/analyzer/fixtures/flutter_shop/pubspec.lock
