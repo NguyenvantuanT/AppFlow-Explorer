@@ -129,3 +129,13 @@ body {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* While a panel is being resized: keep the resize cursor and stop text selection. */
+body[data-resizing='x'] {
+  cursor: col-resize;
+  user-select: none;
+}
+body[data-resizing='y'] {
+  cursor: row-resize;
+  user-select: none;
+}
