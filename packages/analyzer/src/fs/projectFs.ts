@@ -94,6 +94,17 @@ export class ProjectFs {
     return fs.readFile(absolute, 'utf8');
   }
 
+  /** Reads a binary file (images, fonts). Sensitive files are refused like text. */
+  async readBytes(relPath: string, maxBytes = this.options.maxReadBytes): Promise<Buffer> {
+    const rel = this.relative(relPath);
+    if (this.isSensitive(rel)) throw new AccessDeniedError(`Refusing to read a sensitive file: ${rel}`);
+    const absolute = await this.resolve(rel);
+    const stat = await fs.stat(absolute);
+    if (!stat.isFile()) throw new AccessDeniedError(`Not a file: ${rel}`);
+    if (stat.size > maxBytes) throw new AccessDeniedError(`File too large to read: ${rel}`);
+    return fs.readFile(absolute);
+  }
+
   async exists(relPath: string): Promise<boolean> {
     try {
       await fs.access(await this.resolve(relPath));

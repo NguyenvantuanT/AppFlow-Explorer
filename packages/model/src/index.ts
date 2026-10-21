@@ -4,3 +4,4 @@ export * from './flow';
 export * from './source';
 export * from './report';
 export * from './export';
+export * from './preview';

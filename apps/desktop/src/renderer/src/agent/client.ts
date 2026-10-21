@@ -1,4 +1,4 @@
-import type { AppProject } from '@appflow/model';
+import type { AppProject, ScreenPreview } from '@appflow/model';
 import type { SampleProject } from '../../../preload/bridge';
 
 export type { SampleProject };
@@ -69,6 +69,12 @@ export interface AgentApi {
   saveFile(request: SaveFileRequest): Promise<{ ok: boolean; path?: string; cancelled?: boolean; error?: string }>;
   /** Opens a project file at a line in a local editor (desktop app only). */
   openInEditor(request: OpenInEditorRequest): Promise<{ ok: boolean; error?: string }>;
+  /** A screen drawn from its source code. */
+  screenPreview(projectId: string, screenId: string): Promise<ScreenPreview>;
+  /** A project image as a data URI. */
+  previewAsset(projectId: string, path: string): Promise<string>;
+  /** A vector-icons font as a data URI. */
+  iconFont(projectId: string, set: string): Promise<string>;
 }
 
 export type EditorId = 'vscode' | 'cursor';
@@ -117,4 +123,7 @@ export const agentApi: AgentApi = {
     if (!bridge?.openInEditor) return { ok: false, error: 'Opening a local editor is only available in the desktop app.' };
     return bridge.openInEditor(request);
   },
+  screenPreview: async (projectId, screenId) => (await call<{ preview: ScreenPreview }>('GET', `/v1/projects/${projectId}/screens/preview?screen=${encodeURIComponent(screenId)}`)).preview,
+  previewAsset: async (projectId, path) => (await call<{ dataUri: string }>('GET', `/v1/projects/${projectId}/preview/asset?path=${encodeURIComponent(path)}`)).dataUri,
+  iconFont: async (projectId, set) => (await call<{ dataUri: string }>('GET', `/v1/projects/${projectId}/preview/icon-font?set=${encodeURIComponent(set)}`)).dataUri,
 };

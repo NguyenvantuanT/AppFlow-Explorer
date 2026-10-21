@@ -33,6 +33,11 @@ function fakeAgent(statuses: AnalysisInfo['status'][], overrides: Partial<AgentA
     openInEditor: vi.fn(async () => ({ ok: true })),
     changes: vi.fn(async () => ({ analysisId: 'a1', since: '', changed: false, counts: { added: 0, removed: 0, modified: 0 }, added: [], removed: [], modified: [] })),
     saveFile: vi.fn(async () => ({ ok: true, path: '/docs/demo-app-flow-map.json' })),
+    screenPreview: vi.fn(async () => {
+      throw new Error('not used');
+    }),
+    previewAsset: vi.fn(async () => ''),
+    iconFont: vi.fn(async () => ''),
     ...overrides,
   };
 }

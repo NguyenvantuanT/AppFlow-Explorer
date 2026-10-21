@@ -120,7 +120,7 @@ export const reactNativeAdapter: AnalysisAdapter = {
 };
 
 /** Import aliases from tsconfig/jsconfig `paths` and Babel `module-resolver` (`'@': './app'`). */
-async function importAliases(ctx: AnalysisContext, root: string): Promise<ImportAlias[]> {
+export async function importAliases(ctx: Pick<AnalysisContext, 'readText'>, root: string): Promise<ImportAlias[]> {
   const aliases: ImportAlias[] = [];
   const add = (prefix: string, target: string) => {
     const t = joinPath(root, ...target.split('/').filter((p) => p && p !== '.'));

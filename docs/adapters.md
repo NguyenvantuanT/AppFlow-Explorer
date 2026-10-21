@@ -126,6 +126,41 @@ These are patterns in code, not observed screens. They are shown separately from
 
 **Supporting another framework.** A new adapter only adds its own list of rules. The canvas, graph, reports and exports read `discoveredStates` and `deepLinks` from the model, so they need no changes.
 
+## Screens drawn from code
+
+A screen that has no capture from the running app is drawn from its source instead ([`preview/`](../packages/analyzer/src/preview)). The agent draws one screen on request (`GET /v1/projects/:id/screens/preview?screen=`) and returns an element tree with worked-out styles; the desktop app lays it out with CSS at device size, using the project's own fonts and images. Nothing from the project is executed.
+
+### React Native
+
+A small static interpreter walks the screen component and the project components it renders.
+
+| Handled | How |
+| --- | --- |
+| Project components | Opened with their props (defaults, spread, `children`), through imports, aliases, barrels, `memo` and `forwardRef`; class components through `render()` |
+| Styles | `StyleSheet.create`, `ScaledSheet` (`'10@s'`), `s` / `vs` / `ms`, `wp` / `hp`, theme constants, style arrays with conditions, `Platform.select` (iOS), safe-area insets |
+| Elements | `View`, touchables, `Text`, `TextInput`, `Image` / `FastImage` / `ImageBackground`, `ScrollView`, `FlatList` / `SectionList`, `LinearGradient`, `Switch`, `ActivityIndicator`, react-native-svg (drawn as SVG), SVG files imported as components, vector icons and @rneui `Icon` (glyphs from the installed font), react-hook-form `Controller` |
+| Fonts | `fontFamily` names matched to font files in the folders `react-native.config.js` links (or `assets/fonts`) |
+| Data | Values known only at runtime are shown as a likely sample (dates, times, counts) or a short label (`name`), with the expression in the tooltip; lists with unknown data draw three sample rows |
+| Conditions | A known condition picks its branch; an unknown one draws the branch with more content, and early returns (`if (loading) return …`) are skipped |
+
+The device is 375×812 points. Images are loaded from the project; remote images are not fetched. Modals and overlays are drawn only when they are known to be visible. Other library components keep their children, or are drawn as a labelled box.
+
+### Android
+
+Activities, fragments and dialogs are drawn from the layout they show (`setContentView`, `inflate`, view binding, `dialog.setContentView` in `onCreateDialog`) on a 360×780 dp device with the activity's theme (light or dark AppCompat, action bar, window background).
+
+| Handled | How |
+| --- | --- |
+| Layouts | LinearLayout (orientation, gravity, weights), FrameLayout and CardView (stacked children, `layout_gravity`), ConstraintLayout (constraints, bias, `0dp`, guidelines, gone views as points) and RelativeLayout (rules), ScrollView; solved when drawn, from the measured sizes |
+| Views | TextView, Button (AppCompat / Material defaults), EditText, CheckBox, RadioButton, Switch, ImageView, ProgressBar, SeekBar, Toolbar, FAB; video surfaces as black areas; RecyclerView with `tools:listitem` |
+| Project views | Custom views opened to the layout they inflate into themselves; `<include>`, `<merge>`, data binding `<layout>` |
+| Resources | `@color` (and color state lists), `@dimen`, `@string`, `@style` with parents and `textAppearance`, `@font`; drawables: bitmaps (densest folder), shapes (fill, corners, stroke, gradient), selectors, layer lists, ripples, vectors (as SVG) |
+| Text | `android:text`, else `tools:text`; text set in code shows the view id |
+
+### iOS
+
+View controllers laid out in Interface Builder are drawn: the XIB from `init(nibName:)` or the one named after the class, and storyboard scenes. Views are placed at the frames Interface Builder stored (one-line Auto Layout labels grow with their text). Named colors and system colors from the document or asset catalogs, fonts from `fontDescription` or a `fontName` runtime attribute, images from asset catalogs, `cornerRadius` / border runtime attributes. View controllers that build their views in code are not drawn and keep the schematic.
+
 ## Warning codes
 
 | Code | Severity | Meaning |

@@ -2,6 +2,8 @@ import type { Screen, WidgetKind } from '@appflow/model';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { memo, useState } from 'react';
 import { PhoneIcon } from '../components/icons';
+import { useExplorer } from '../store';
+import { CodePreview, useScreenPreview } from './CodePreview';
 
 export interface PhoneNodeData extends Record<string, unknown> {
   screen: Screen;
@@ -76,6 +78,10 @@ export const PhoneNode = memo(function PhoneNode({ data, selected }: NodeProps<P
   const state = screen.states[current];
   const shot = state?.screenshot;
   const kindLabel = KIND_LABEL[screen.kind];
+  const projectId = useExplorer((s) => (s.project.source === 'analysis' ? s.workspace.projectId : undefined));
+  const analyzedAt = useExplorer((s) => s.project.analyzedAt);
+  const drawable = !shot && (screen.id.startsWith('react-native:') || screen.id.startsWith('ios:') || (screen.id.startsWith('android:') && (screen.platformKind === 'activity' || screen.platformKind === 'fragment')));
+  const { preview } = useScreenPreview(projectId, analyzedAt, screen.id, drawable);
   const isOverlay = screen.kind !== 'page';
 
   const frameTone = selected
@@ -97,6 +103,8 @@ export const PhoneNode = memo(function PhoneNode({ data, selected }: NodeProps<P
               draggable={false}
               className="h-full w-full select-none object-cover"
             />
+          ) : preview && projectId ? (
+            <CodePreview preview={preview} projectId={projectId} />
           ) : (
             <Wireframe screen={screen} />
           )}
@@ -121,6 +129,11 @@ export const PhoneNode = memo(function PhoneNode({ data, selected }: NodeProps<P
               data-testid="node-ui-states"
             >
               ◐ {screen.discoveredStates.length}
+            </span>
+          )}
+          {!shot && preview && (
+            <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-white/90" title="Drawn from the source code; data, state and animations are not run.">
+              From code
             </span>
           )}
           {state?.provenance === 'mock' && (

@@ -10,6 +10,7 @@ import { detectChanges } from './changes';
 import { ApiError } from './errors';
 import { JobManager } from './jobs';
 import { OperationGate, spawnRunner, type OperationRunner } from './operations';
+import { PreviewService } from './preview';
 import { nodeRunner, type ProcessRunner } from './runtime/exec';
 import { RuntimeService, type ProjectRef } from './runtime/service';
 import {
@@ -77,6 +78,7 @@ export async function startAgent(options: AgentOptions = {}): Promise<Agent> {
   const jobs = new JobManager(adapters);
   const gate = new OperationGate(options.runner ?? spawnRunner);
   const projects = new Map<string, RegisteredProject>();
+  const previews = new PreviewService();
   let port = 0;
 
   const project = (id: string): RegisteredProject => {
@@ -151,6 +153,7 @@ export async function startAgent(options: AgentOptions = {}): Promise<Agent> {
     ['DELETE', /^\/v1\/projects\/([\w-]+)$/, async ({ params }) => {
       project(params[0]!);
       jobs.cancelProject(params[0]!);
+      previews.forget(params[0]!);
       projects.delete(params[0]!);
       return { status: 204, body: null };
     }],
@@ -214,6 +217,23 @@ export async function startAgent(options: AgentOptions = {}): Promise<Agent> {
       // The hash lets the viewer tell whether the file changed since it was analyzed.
       const hash = createHash('sha1').update(content, 'utf8').digest('hex');
       return { body: { path: p.fs.relative(rel), language: languageOf(rel), content, hash } };
+    }],
+
+    // Screens drawn from source code, and the images and icon fonts they use. Nothing is executed.
+    ['GET', /^\/v1\/projects\/([\w-]+)\/screens\/preview$/, async ({ params, query }) => {
+      const p = project(params[0]!);
+      const screen = query.get('screen');
+      if (!screen) throw new ApiError('invalid_request', 'Missing screen.');
+      return { body: { preview: await previews.screen(p.info.id, p.fs, jobs.latestResult(p.info.id), screen) } };
+    }],
+    ['GET', /^\/v1\/projects\/([\w-]+)\/preview\/asset$/, async ({ params, query }) => {
+      const p = project(params[0]!);
+      const { path: rel } = parse(FileContentQuery, { path: query.get('path') ?? undefined });
+      return { body: { dataUri: await previews.asset(p.fs, rel) } };
+    }],
+    ['GET', /^\/v1\/projects\/([\w-]+)\/preview\/icon-font$/, async ({ params, query }) => {
+      const p = project(params[0]!);
+      return { body: { dataUri: await previews.iconFont(p.fs, jobs.latestResult(p.info.id), query.get('set') ?? '') } };
     }],
 
     // Resolves a project file to its real absolute path so the desktop app can open it in a local
