@@ -6,7 +6,13 @@ export interface Located<T> {
   file: string;
 }
 
-export const loc = (file: string, line: number, column?: number): SourceLocation => ({ fileId: file, line, ...(column ? { column } : {}) });
+/** An import prefix mapped to a project directory: `@/x` → `app/x`. */
+export interface ImportAlias {
+  prefix: string;
+  target: string;
+}
+
+export const loc =(file: string, line: number, column?: number): SourceLocation => ({ fileId: file, line, ...(column ? { column } : {}) });
 
 const CODE_EXTENSIONS = ['.dart', '.tsx', '.ts', '.jsx', '.js', '.kt', '.java', '.swift'];
 
@@ -70,10 +76,17 @@ export class CodeIndex {
     return direct !== undefined && /^[\w.$]+$/.test(ref) ? { value: direct, pattern: direct } : {};
   }
 
-  /** Resolves an import specifier (relative path or Dart `package:`) to a project file. */
+  /** Path aliases (`@/` → `app/`) from tsconfig `paths` or Babel `module-resolver`; set by the adapter. */
+  aliases: ImportAlias[] = [];
+
+  /** Resolves an import specifier (relative path, alias or Dart `package:`) to a project file. */
   resolveImport(from: string, source: string): string | undefined {
     let base: string | undefined;
-    if (source.startsWith('.')) {
+    const alias = this.aliases.find((a) => source === a.prefix || source.startsWith(a.prefix.endsWith('/') ? a.prefix : `${a.prefix}/`));
+    if (alias) {
+      const rest = source.slice(alias.prefix.length).replace(/^\//, '');
+      base = [alias.target, rest].filter(Boolean).join('/');
+    } else if (source.startsWith('.')) {
       const parts = [...from.split('/').slice(0, -1), ...source.split('/')];
       const out: string[] = [];
       for (const p of parts) {

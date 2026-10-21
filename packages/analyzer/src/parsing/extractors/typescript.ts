@@ -115,6 +115,22 @@ export function extractTypeScript(root: Node): FileFacts {
   const visit = (n: Node, scope: Scope): void => {
     switch (n.type) {
       case 'export_statement': {
+        // Re-exports (`export { default as X } from './x'`, `export * from './y'`) are imports that barrels pass on.
+        const source = n.childForFieldName('source');
+        if (source) {
+          const names: Array<{ local: string; imported: string }> = [];
+          const clause = namedChildren(n).find((c) => c.type === 'export_clause');
+          for (const s of clause ? namedChildren(clause).filter((x) => x.type === 'export_specifier') : []) {
+            const imported = s.childForFieldName('name')?.text ?? s.text;
+            names.push({ local: s.childForFieldName('alias')?.text ?? imported, imported });
+          }
+          if (!clause) names.push({ local: '*', imported: '*' });
+          facts.imports.push({ source: unquote(source.text), names, line: pos(n).line, isExport: true });
+          return;
+        }
+        // `export default Name;` exports a component declared earlier in the file.
+        const value = n.childForFieldName('value');
+        if (value?.type === 'identifier') for (const f of facts.functions) if (f.name === value.text && !f.enclosingClass) f.exported = true;
         for (const c of namedChildren(n)) visit(c, { ...scope, exported: true });
         return;
       }

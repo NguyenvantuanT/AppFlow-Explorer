@@ -72,3 +72,33 @@ describe('Native bridges — Android host written in Java (flutter_native_java)'
     expect(p.edges.filter((e) => e.to === null)).toEqual([]);
   });
 });
+
+describe('Native bridges — React Native app with native screens several calls away (rn_livestream)', () => {
+  let p: AppProject;
+  beforeAll(async () => {
+    p = (await analyzeProject(path.resolve(__dirname, '../../fixtures/rn_livestream'), { adapters: defaultAdapters })).project;
+  });
+
+  it('finds screens imported through path aliases and barrel files', () => {
+    expect(validateProject(p)).toEqual([]);
+    expect(p.screens.filter((s) => s.id.startsWith('react-native:')).map((s) => [s.id, s.location?.fileId])).toEqual([
+      ['react-native:HomeScreen', 'src/screens/HomeScreen.tsx'],
+      ['react-native:LiveSetupScreen', 'src/screens/LiveSetupScreen.tsx'],
+      ['react-native:InviteScreen', 'src/screens/invite/InviteScreen.tsx'],
+    ]);
+    expect(p.warnings!.map((w) => w.code)).not.toContain('route-target-unknown');
+  });
+
+  it('follows native module methods through callbacks, other classes and their subclasses', () => {
+    const bridged = p.edges.filter((e) => e.bridge?.kind === 'native-module').map((e) => [e.from, e.to, e.kind, e.bridge!.method, e.evidence.map(at).at(-1)]);
+    const room = 'android/liveroom/src/main/java/com/livestream/liveroom/LiveRoomImpl.java';
+    expect(bridged).toEqual([
+      ['react-native:LiveSetupScreen', 'android:AnchorActivity', 'push', 'startStream', `${room}:26`],
+      ['react-native:LiveSetupScreen', 'ios:AnchorViewController', 'modal', 'startStream', 'ios/LiveRoom/LiveRoomKit.swift:8'],
+      ['react-native:InviteScreen', 'android:GuestActivity', 'push', 'joinStream', `${room}:38`],
+      ['react-native:InviteScreen', 'ios:GuestViewController', 'modal', 'joinStream', 'ios/LiveRoom/LiveRoomKit.swift:13'],
+    ]);
+    // setProfile reaches the same classes but opens nothing.
+    expect(p.edges.some((e) => e.bridge?.method === 'setProfile')).toBe(false);
+  });
+});

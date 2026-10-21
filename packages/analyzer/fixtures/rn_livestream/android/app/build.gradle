@@ -1,0 +1,11 @@
+apply plugin: "com.android.application"
+apply plugin: "com.facebook.react"
+
+android {
+    namespace "com.livestream"
+    compileSdk 34
+}
+
+dependencies {
+    implementation project(':liveroom')
+}

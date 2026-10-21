@@ -1,0 +1,6 @@
+apply plugin: "com.android.library"
+
+android {
+    namespace "com.livestream.liveroom"
+    compileSdk 34
+}

@@ -84,7 +84,7 @@ Limitations: Objective-C support covers class declarations and `alloc/init` / `n
 | Discovers | Confidence |
 | --- | --- |
 | App from `package.json` (Expo or bare); custom native screens in `android/` and `ios/` (see below) | high |
-| React Navigation `<X.Screen name component>` and static `screens: {}` config, resolved through imports to the component definition | high |
+| React Navigation `<X.Screen name component>` and static `screens: {}` config, resolved through imports to the component definition — relative paths, tsconfig/jsconfig `paths` and Babel `module-resolver` aliases (`@/screens`), and barrel files (`export { default as X } from`, `export *`) | high |
 | Nested navigators: a route that renders another navigator lands on that navigator's initial screen; tab siblings (declared) | high |
 | `navigation.navigate` / `push` / `replace` / `reset` / `jumpTo` with literal or constant route names | medium |
 | Expo Router file routes (`app/`, groups, `[param]`), `router.push`, `<Link href>` | high / medium |
@@ -100,10 +100,12 @@ After the adapters run, the native bridges pass ([`core/bridges.ts`](../packages
 
 | Bridge | Dart / JS side | Native side | Edge |
 | --- | --- | --- | --- |
-| Flutter `MethodChannel` | `invokeMethod('openScanner')` on a channel, also through a helper such as `NativeBridge.openScanner()` (two levels of callers) | `setMethodCallHandler` with `when (call.method)` / `switch call.method`, following one helper function in the same class | Flutter screen → native screen (`push` on Android, `present` gives `modal` on iOS) |
+| Flutter `MethodChannel` | `invokeMethod('openScanner')` on a channel, also through a helper such as `NativeBridge.openScanner()` (two levels of callers) | `setMethodCallHandler` with `when (call.method)` / `switch call.method`, following the calls it makes (see below) | Flutter screen → native screen (`push` on Android, `present` gives `modal` on iOS) |
 | Flutter platform view | `AndroidView` / `UiKitView` with a `viewType` | `registerViewFactory` / `register(_:withId:)` | Key widget “Native view …” on the Flutter screen |
 | Flutter engine | — | `FlutterActivity.withNewEngine().initialRoute("/x")`, `withCachedEngine`, `FlutterViewController(… initialRoute:)`, `setInitialRoute` / `pushRoute` | Native screen → the Flutter screen for that route (entry screen when no route) |
-| React Native module | `NativeModules.X.m()`, destructured or aliased modules, `TurboModuleRegistry` | `@ReactMethod` in a `ReactContextBaseJavaModule` / `Native*Spec`, ObjC `RCT_EXPORT_METHOD`, Swift `RCT_EXTERN_METHOD` | RN screen → native screen |
+| React Native module | `NativeModules.X.m()`, destructured or aliased modules, `TurboModuleRegistry` | `@ReactMethod` in a `ReactContextBaseJavaModule` / `Native*Spec`, ObjC `RCT_EXPORT_METHOD`, Swift `RCT_EXTERN_METHOD`, following the calls they make (see below) | RN screen → native screen (`modal` when the iOS code presents it) |
+
+On the native side, a handler or module method is followed up to four calls deep to the code that opens a screen (`Intent(…, X.class)` + `startActivity`, `X()` + `present`): helpers of the same class, and methods of other classes reached through a class name (`LiveRoom.shared.createRoom()`, `Store.getInstance().open()`) or a typed field (`private LiveRoom mRoom;` → `mRoom.createRoom()`), including the subclasses of an abstract class and code in other Gradle modules. Calls inside callbacks, closures and anonymous classes count for the method that contains them. Calls on interfaces and protocols (listeners, delegates) are not followed.
 
 Limitations: Flutter method channels written in Objective-C are not analyzed. A handler branch is matched to the nearest method-name string before it, so handlers that compute the method name are not split by method. Event channels, Pigeon and other code generators are unsupported. Channel and module names must be literals or constants.
 
@@ -185,4 +187,5 @@ New platforms and routing frameworks plug in **without changing the model or the
 | `flutter_native` | Hybrid “core banking” app: `MethodChannel` calls through a helper and inline, Kotlin `when` and Swift `switch` handlers with a helper function, native activities and view controllers, platform view, native screens opening Flutter with `initialRoute` |
 | `flutter_native_java` | The `flutter_native` app with its Android host in Java: `switch (call.method)` in a lambda, a helper method, `FlutterActivity.withNewEngine()` |
 | `flutter_states` | Loading, empty, error, data, authentication, bottom sheet and tab states, an inline dialog, a commented-out state, Android app links and a custom scheme, iOS URL types and associated domains |
+| `rn_livestream` | Screens imported through `@/` and Babel aliases and barrel files; native modules (Java and Swift) whose screens are several calls away: callbacks, an abstract class implemented in a `:liveroom` library module, `LiveRoomKit.shared` presenting a view controller |
 | `rn_recipebox` | Stack and tab navigators (nested), modal group, route constants, `reset`, dynamic and undeclared routes, Kotlin, Java and Objective-C native modules that open native screens (`ScanActivity`, `CheckoutActivity`, `ScanViewController`), `require()` images, secrets |

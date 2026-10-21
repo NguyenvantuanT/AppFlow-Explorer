@@ -1,0 +1,11 @@
+// prettier-ignore
+{
+  "extends": "@react-native/typescript-config/tsconfig.json", /* base */
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+    },
+    "strict": true,
+  }
+}
