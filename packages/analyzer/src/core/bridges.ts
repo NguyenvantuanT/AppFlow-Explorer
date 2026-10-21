@@ -1,9 +1,9 @@
 import type { NativeBridge, NavigationKind, Screen, WidgetRef } from '@appflow/model';
 import { callText, staticEvidence, triggerFor, truncate } from '../adapters/shared';
-import type { CallFact, FileFacts } from '../parsing/facts';
+import type { CallFact, FileFacts, FunctionFact } from '../parsing/facts';
 import type { ScannedFile } from '../fs/projectFs';
 import type { ProjectGraphBuilder } from './builder';
-import { CodeIndex, loc, routeMatcher } from './codeIndex';
+import { CodeIndex, loc, routeMatcher, type Located } from './codeIndex';
 import { filesUnder, joinPath, type DetectionMatch } from './types';
 
 export interface BridgeContext {
@@ -51,13 +51,13 @@ export async function connectNativeBridges(ctx: BridgeContext, out: ProjectGraph
       const platform = host.platform as NativePlatform;
       const files = filesUnder(ctx.files, host.root).filter((f) => (platform === 'android' ? /\.(kt|java)$/ : /\.(swift|m|mm)$/).test(f.path) && !/(\/src\/(test|androidTest)\w*\/|Tests\/)/.test(f.path));
       natives.set(platform, await indexFiles(ctx, files));
-      if (platform === 'ios') for (const f of files.filter((x) => /\.mm?$/.test(x.path))) nativeText.set(f.path, (await ctx.readText(f.path)) ?? '');
+      for (const f of files) nativeText.set(f.path, (await ctx.readText(f.path)) ?? '');
     }
     const hostRoots = hosts.map((h) => `${h.root}/`);
     const appFiles = filesUnder(ctx.files, app.root).filter((f) => !hostRoots.some((r) => f.path.startsWith(r)));
     if (app.platform === 'flutter') {
       const index = await indexFiles(ctx, appFiles.filter((f) => f.path.endsWith('.dart') && /(^|\/)lib\//.test(f.path)));
-      flutterBridges(index, natives, out);
+      flutterBridges(index, natives, nativeText, out);
     } else {
       const index = await indexFiles(ctx, appFiles.filter((f) => /\.(js|jsx|ts|tsx)$/.test(f.path) && !/(\.test\.|\.spec\.|__tests__\/|\.d\.ts$)/.test(f.path)));
       const texts = new Map<string, string>();
@@ -79,7 +79,7 @@ async function indexFiles(ctx: BridgeContext, files: ScannedFile[]): Promise<Cod
 
 // ---- Flutter -------------------------------------------------------------------------------------------
 
-function flutterBridges(dart: CodeIndex, natives: Map<NativePlatform, CodeIndex>, out: ProjectGraphBuilder): void {
+function flutterBridges(dart: CodeIndex, natives: Map<NativePlatform, CodeIndex>, nativeText: Map<string, string>, out: ProjectGraphBuilder): void {
   // Native side: channel handlers and platform view factories.
   const handlers: NativeHandler[] = [];
   const viewFactories = new Map<string, Array<{ platform: NativePlatform; factory: string }>>();
@@ -88,7 +88,7 @@ function flutterBridges(dart: CodeIndex, natives: Map<NativePlatform, CodeIndex>
       const { call } = ref;
       if (call.name === 'setMethodCallHandler') {
         const name = channelOf(index, ref);
-        if (name) handlers.push(...handlerBranches(index, platform, ref, name, out));
+        if (name) handlers.push(...handlerBranches(index, nativeText, platform, ref, name, out));
       } else if (call.name === 'registerViewFactory' || (call.name === 'register' && call.args.some((a) => a.label === 'withId'))) {
         const idArg = call.args.find((a) => a.label === 'withId') ?? call.args[0];
         const viewType = index.resolveString(idArg).value;
@@ -200,14 +200,14 @@ function channelOf(index: CodeIndex, { call, facts }: CallRef): string | undefin
  * branch belongs to the method name written last before it inside the handler
  * (`when (call.method) { "m" -> … }`, `case "m":`, `if call.method == "m"`).
  */
-function handlerBranches(index: CodeIndex, platform: NativePlatform, handler: CallRef, name: string, out: ProjectGraphBuilder): NativeHandler[] {
+function handlerBranches(index: CodeIndex, text: Map<string, string>, platform: NativePlatform, handler: CallRef, name: string, out: ProjectGraphBuilder): NativeHandler[] {
   const { facts } = handler;
   const handlerIndex = facts.calls.indexOf(handler.call);
   const lastLine = Math.max(handler.call.line, ...facts.calls.filter((c) => hasAncestor(facts, c, handlerIndex)).map((c) => c.line));
   const strings = facts.strings.filter((s) => s.line >= handler.call.line && s.line <= lastLine && /^\w+$/.test(s.value));
   const byMethod = new Map<string | undefined, NativeOpen[]>();
   for (const call of facts.calls.filter((c) => hasAncestor(facts, c, handlerIndex))) {
-    const opens = opensFrom(index, platform, { call, file: handler.file, facts }, out);
+    const opens = opensFrom(index, text, platform, { call, file: handler.file, facts }, out);
     if (!opens.length) continue;
     const method = strings.filter((s) => s.line <= call.line).at(-1)?.value;
     byMethod.set(method, [...(byMethod.get(method) ?? []), ...opens]);
@@ -225,14 +225,26 @@ function dedupe(opens: NativeOpen[]): NativeOpen[] {
   return [...seen.values()];
 }
 
-/** Native screens a call opens: directly (`Intent(this, X::class.java)`, `X()`), or through a helper function of the same class. */
-function opensFrom(index: CodeIndex, platform: NativePlatform, ref: CallRef, out: ProjectGraphBuilder, depth = 1): NativeOpen[] {
+/**
+ * Native screens a call opens: directly (`Intent(this, X::class.java)`, `X()`),
+ * or through the functions it calls, up to `depth` calls away: helpers of the
+ * same class, and methods of other classes reached through a class name
+ * (`TUILiveRoom.sharedInstance.createRoom()`) or a typed field
+ * (`mLiveVideo.createRoom()`), including the subclasses of an abstract class.
+ * Calls inside callbacks and closures count for the function that contains them.
+ */
+function opensFrom(index: CodeIndex, text: Map<string, string>, platform: NativePlatform, ref: CallRef, out: ProjectGraphBuilder, depth = 4, seen = new Set<string>()): NativeOpen[] {
   const { call, facts } = ref;
-  const refs = new Set(call.args.flatMap((a) => a.typeRefs));
+  // Callbacks passed as arguments are scanned as calls of their own, so the evidence is the line that opens the screen.
+  const refs = new Set(call.args.filter((a) => !a.isLambda && !a.text.includes('{')).flatMap((a) => a.typeRefs));
   if (call.isInstantiation) refs.add(call.name);
   for (const a of call.args) {
     if (!/^\w+$/.test(a.text)) continue;
-    facts.variables.find((v) => v.name === a.text && v.enclosingFunction === call.enclosingFunction)?.value.typeRefs.forEach((t) => refs.add(t));
+    // The nearest declaration above the call: callbacks often reuse the same function and variable names (`onCallback`, `intent`).
+    facts.variables
+      .filter((v) => v.name === a.text && v.enclosingFunction === call.enclosingFunction && v.line <= call.line)
+      .at(-1)
+      ?.value.typeRefs.forEach((t) => refs.add(t));
   }
   const kind: NavigationKind = MODAL_CALLS.test(call.name) ? 'modal' : 'push';
   const opens: NativeOpen[] = [];
@@ -240,12 +252,59 @@ function opensFrom(index: CodeIndex, platform: NativePlatform, ref: CallRef, out
     const screen = out.screens.get(`${platform}:${t}`);
     if (screen) opens.push({ platform, screen, kind, file: ref.file, line: call.line, detail: callText(call), created: call.isInstantiation });
   }
-  if (!opens.length && depth > 0 && !call.isInstantiation && /^((this|self)\.)?\w+$/.test(call.callee)) {
-    for (const inner of index.allCalls()) {
-      if (inner.call.enclosingFunction === call.name && inner.call.enclosingClass === call.enclosingClass) opens.push(...opensFrom(index, platform, inner, out, depth - 1));
-    }
+  if (!opens.length && depth > 0 && !call.isInstantiation) {
+    for (const target of callTargets(index, text, ref)) opens.push(...functionOpens(index, text, platform, target, out, depth - 1, seen));
   }
   return dedupe(opens);
+}
+
+/** Native screens a function opens, through the calls in its body (see `opensFrom`). */
+function functionOpens(index: CodeIndex, text: Map<string, string>, platform: NativePlatform, fn: Located<FunctionFact>, out: ProjectGraphBuilder, depth = 4, seen = new Set<string>()): NativeOpen[] {
+  const key = `${fn.file}#${fn.fact.enclosingClass}.${fn.fact.name}@${fn.fact.line}`;
+  if (seen.has(key)) return [];
+  seen.add(key);
+  const body = bodyCalls(index, fn);
+  // A screen created in a function that presents it (`present(vc)`, `presentRoomController(vc:)`) is shown modally.
+  const presents = platform === 'ios' && body.some((r) => /^present/.test(r.call.name));
+  const opens = body.flatMap((inner) => opensFrom(index, text, platform, inner, out, depth, seen));
+  return dedupe(opens.map((o) => (presents ? { ...o, kind: 'modal' as const } : o)));
+}
+
+/** Calls written inside a function, including those in its callbacks, closures and anonymous classes. */
+function bodyCalls(index: CodeIndex, fn: Located<FunctionFact>): CallRef[] {
+  const facts = index.files.get(fn.file);
+  if (!facts) return [];
+  return facts.calls.filter((c) => c.line >= fn.fact.line && c.line <= fn.fact.endLine && (c.line > fn.fact.line || c.column >= fn.fact.column)).map((call) => ({ call, file: fn.file, facts }));
+}
+
+/** The functions a call may run: a helper of the same class, or a method of the receiver's class and its subclasses. */
+function callTargets(index: CodeIndex, text: Map<string, string>, { call, file }: CallRef): Array<Located<FunctionFact>> {
+  const methods = (cls: string) => (index.functions.get(call.name) ?? []).filter((f) => f.fact.enclosingClass === cls);
+  const callee = call.callee.replace(/^(this|self)\??\./, '');
+  if (!callee.includes('.')) return call.enclosingClass ? methods(call.enclosingClass) : [];
+  const receiver = callee.split('.').slice(0, -1);
+  const type = receiver.find((s) => index.classes.has(s)) ?? fieldType(index, text.get(file) ?? '', receiver[0]!);
+  if (!type) return [];
+  // Calls on an interface or protocol reach listeners and delegates, not the code that opens screens.
+  const decl = index.classNamed(type)?.fact;
+  if (decl && (decl.kind === 'interface' || decl.kind === 'protocol')) return [];
+  const classes = [type, ...[...index.classes.keys()].filter((c) => c !== type && index.extendsAny(c, new Set([type])))];
+  return classes.flatMap(methods);
+}
+
+/** The declared or assigned class of a field or variable: `private TUILiveRoom mLiveVideo;`, `var room: TUILiveRoom`, `mLiveVideo = TUILiveRoom.sharedInstance(…)`. */
+function fieldType(index: CodeIndex, source: string, name: string): string | undefined {
+  if (!/^[a-z_]\w*$/i.test(name)) return undefined;
+  const patterns = [
+    new RegExp(`\\b([A-Z]\\w*)(?:<[^;=()]*>)?\\s+${name}\\s*[;=]`),
+    new RegExp(`\\b(?:var|val|let)\\s+${name}\\s*:\\s*([A-Z]\\w*)`),
+    new RegExp(`\\b${name}\\s*=\\s*(?:new\\s+)?([A-Z]\\w*)\\s*[.(]`),
+  ];
+  for (const p of patterns) {
+    const type = p.exec(source)?.[1];
+    if (type && index.classes.has(type)) return type;
+  }
+  return undefined;
 }
 
 function flutterRouteScreen(out: ProjectGraphBuilder, route: string): Screen | undefined {
@@ -295,7 +354,7 @@ function reactNativeBridges(js: CodeIndex, texts: Map<string, string>, natives: 
       const literal = getName ? facts.strings.find((s) => s.line >= getName.line && s.line <= getName.endLine)?.value : undefined;
       const name = literal ?? facts.constants.find((c) => /(^|\.)NAME$/.test(c.name))?.value ?? cls;
       for (const fn of facts.functions.filter((f) => f.enclosingClass === cls && f.annotations.includes('ReactMethod'))) {
-        const opens = dedupe([...android.allCalls()].filter((r) => r.file === file && r.call.enclosingClass === cls && r.call.enclosingFunction === fn.name).flatMap((r) => opensFrom(android, 'android', r, out)));
+        const opens = functionOpens(android, nativeText, 'android', { fact: fn, file }, out);
         if (opens.length) handlers.push({ name, method: fn.name, opens });
       }
     }
@@ -304,6 +363,7 @@ function reactNativeBridges(js: CodeIndex, texts: Map<string, string>, natives: 
   // iOS: RCT_EXPORT_MODULE / RCT_EXPORT_METHOD in Objective-C, RCT_EXTERN_MODULE for Swift modules.
   const ios = natives.get('ios');
   for (const [file, text] of nativeText) {
+    if (!/\.(m|mm)$/.test(file)) continue;
     const lineAt = (offset: number) => text.slice(0, offset).split('\n').length;
     const exported = /RCT_EXPORT_MODULE\(\s*(\w*)\s*\)/.exec(text);
     if (exported) {
@@ -326,7 +386,8 @@ function reactNativeBridges(js: CodeIndex, texts: Map<string, string>, natives: 
       for (const m of text.matchAll(/RCT_EXTERN_MODULE\(\s*(\w+)/g)) {
         const cls = m[1]!;
         for (const em of text.matchAll(/RCT_EXTERN_METHOD\(\s*(\w+)/g)) {
-          const opens = dedupe([...ios.allCalls()].filter((r) => r.call.enclosingClass === cls && r.call.enclosingFunction === em[1]).flatMap((r) => opensFrom(ios, 'ios', r, out)));
+          const fns = (ios.functions.get(em[1]!) ?? []).filter((f) => f.fact.enclosingClass === cls);
+          const opens = dedupe(fns.flatMap((fn) => functionOpens(ios, nativeText, 'ios', fn, out)));
           if (opens.length) handlers.push({ name: cls, method: em[1]!, opens });
         }
       }
@@ -371,7 +432,7 @@ function moduleAlias(text: string, facts: FileFacts, local: string): string | un
   if (direct) return direct;
   const turbo = v && /TurboModuleRegistry\.(getEnforcing|get)\b/.test(v.value.text) ? v.value.strings[0] : undefined;
   if (turbo) return turbo;
-  for (const m of text.matchAll(/\{([^}]*)\}\s*=\s*NativeModules\b/g)) {
+  for (const m of text.matchAll(/\{([^{}]*)\}\s*=\s*NativeModules\b/g)) {
     for (const part of m[1]!.split(',')) {
       const [name, alias] = part.split(':').map((s) => s.trim());
       if ((alias ?? name) === local) return name;

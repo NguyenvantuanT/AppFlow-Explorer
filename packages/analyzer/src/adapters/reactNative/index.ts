@@ -2,7 +2,7 @@ import { lookup } from '../shared';
 import { REACT_NATIVE_UI_STATES } from '../uiStateRules';
 import type { Dependency, Evidence, NavigationKind, ScreenKind, WidgetRef } from '@appflow/model';
 import type { ProjectGraphBuilder } from '../../core/builder';
-import { CodeIndex, loc, routeMatcher } from '../../core/codeIndex';
+import { CodeIndex, loc, routeMatcher, type ImportAlias } from '../../core/codeIndex';
 import { basename, dirname, filesUnder, humanize, joinPath, type AnalysisAdapter, type AnalysisContext, type DetectionMatch } from '../../core/types';
 import { HANDLER_LABEL, ownerLabel } from '../../parsing/ast';
 import type { ArgFact, CallFact, FileFacts, JsxFact } from '../../parsing/facts';
@@ -106,6 +106,7 @@ export const reactNativeAdapter: AnalysisAdapter = {
       (f) => CODE_EXT.some((e) => f.path.endsWith(e)) && !nativeDirs.some((d) => f.path.startsWith(`${d}/`)) && !/(^|\/)(__tests__|__mocks__|e2e)\//.test(f.path) && !/\.(test|spec)\.[jt]sx?$/.test(f.path) && !/(babel|metro|jest|eslint|prettier|react-native)\.config\.js$/.test(f.path),
     );
     const index = new CodeIndex();
+    index.aliases = await importAliases(ctx, match.root);
     for (let i = 0; i < jsFiles.length; i++) {
       ctx.signal?.throwIfAborted();
       if (i % 50 === 0) ctx.progress(`parsing JavaScript/TypeScript (${i}/${jsFiles.length})`);
@@ -118,37 +119,93 @@ export const reactNativeAdapter: AnalysisAdapter = {
   },
 };
 
-/** Resolves a relative import to a project file. */
-function resolveImport(from: string, source: string, paths: Set<string>): string | undefined {
-  if (!source.startsWith('.')) return undefined;
-  const base = joinPath(...dirname(from).split('/').filter(Boolean));
-  const parts = `${base}/${source}`.split('/');
-  const stack: string[] = [];
-  for (const p of parts) {
-    if (!p || p === '.') continue;
-    if (p === '..') stack.pop();
-    else stack.push(p);
+/** Import aliases from tsconfig/jsconfig `paths` and Babel `module-resolver` (`'@': './app'`). */
+async function importAliases(ctx: AnalysisContext, root: string): Promise<ImportAlias[]> {
+  const aliases: ImportAlias[] = [];
+  const add = (prefix: string, target: string) => {
+    const t = joinPath(root, ...target.split('/').filter((p) => p && p !== '.'));
+    if (prefix && !aliases.some((a) => a.prefix === prefix)) aliases.push({ prefix, target: t });
+  };
+  for (const name of ['tsconfig.json', 'jsconfig.json']) {
+    const text = await ctx.readText(joinPath(root, name));
+    if (!text) continue;
+    try {
+      const options = JSON.parse(stripJsonComments(text)).compilerOptions ?? {};
+      const baseUrl = String(options.baseUrl ?? '.');
+      for (const [key, targets] of Object.entries<string[]>(options.paths ?? {})) {
+        if (targets[0]) add(key.replace(/\*$/, ''), joinPath(baseUrl, targets[0].replace(/\/?\*$/, '')));
+      }
+    } catch {
+      // A config that does not parse adds no aliases.
+    }
   }
-  const target = stack.join('/');
-  for (const candidate of [target, ...CODE_EXT.map((e) => target + e), ...CODE_EXT.map((e) => `${target}/index${e}`)]) if (paths.has(candidate)) return candidate;
-  return undefined;
+  for (const name of ['babel.config.js', '.babelrc', '.babelrc.js', 'babel.config.json']) {
+    const text = await ctx.readText(joinPath(root, name));
+    const block = text && /alias\s*:\s*\{([^}]*)\}/.exec(text)?.[1];
+    if (!block) continue;
+    for (const m of block.matchAll(/['"]?([@~$#\w/-]+)['"]?\s*:\s*['"]([^'"]+)['"]/g)) add(m[1]!.startsWith('^') ? '' : m[1]!, m[2]!);
+  }
+  // Longest prefix first, so `@/components` wins over `@`.
+  return aliases.sort((a, b) => b.prefix.length - a.prefix.length);
+}
+
+/** Removes comments and trailing commas from JSONC (tsconfig), leaving strings such as "@/*" intact. */
+function stripJsonComments(text: string): string {
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (c === '"') {
+      const end = /"(?:[^"\\]|\\.)*"/y;
+      end.lastIndex = i;
+      const m = end.exec(text);
+      const s = m ? m[0] : text.slice(i);
+      out += s;
+      i += s.length - 1;
+    } else if (c === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+      out += '\n';
+    } else if (c === '/' && text[i + 1] === '*') {
+      const close = text.indexOf('*/', i + 2);
+      i = close < 0 ? text.length : close + 1;
+    } else {
+      out += c;
+    }
+  }
+  return out.replace(/,(\s*[}\]])/g, '$1');
 }
 
 async function analyzeJs(ctx: AnalysisContext, match: DetectionMatch, out: ProjectGraphBuilder, index: CodeIndex, paths: Set<string>, depNames: Set<string>): Promise<void> {
   // ---- Component definitions, resolved through imports --------------------------------------------------
-  /** Finds where a component used in `file` under `name` is defined. */
+  /** Finds where a component used in `file` under `name` is defined, following barrel re-exports. */
   const definition = (file: string, name: string): { name: string; file: string; line: number } | undefined => {
     const facts = index.files.get(file);
     if (!facts) return undefined;
     const local = facts.functions.find((f) => f.name === name);
     if (local) return { name, file, line: local.line };
-    const imp = facts.imports.flatMap((i) => i.names.map((n) => ({ ...n, source: i.source }))).find((n) => n.local === name);
+    const imp = facts.imports.filter((i) => !i.isExport).flatMap((i) => i.names.map((n) => ({ ...n, source: i.source }))).find((n) => n.local === name);
     if (!imp) return undefined;
-    const target = resolveImport(file, imp.source, paths);
-    const tf = target ? index.files.get(target) : undefined;
-    if (!target || !tf) return undefined;
+    const target = index.resolveImport(file, imp.source);
+    return target ? exportedFrom(target, imp.imported, name) : undefined;
+  };
+  /** The component `target` exports as `imported` (`default` or a name). */
+  const exportedFrom = (target: string, imported: string, hint: string, depth = 0): { name: string; file: string; line: number } | undefined => {
+    const tf = index.files.get(target);
+    if (!tf || depth > 4) return undefined;
+    if (imported !== 'default') {
+      const fn = tf.functions.find((f) => f.name === imported && !f.enclosingClass);
+      if (fn) return { name: fn.name, file: target, line: fn.line };
+    }
+    // export { default as X } from './X' / export { X } from './X' / export * from './X'
+    for (const re of tf.imports.filter((i) => i.isExport)) {
+      const named = re.names.find((n) => n.local === imported);
+      if (!named && (imported === 'default' || !re.names.some((n) => n.imported === '*'))) continue;
+      const next = index.resolveImport(target, re.source);
+      const found = next && exportedFrom(next, named ? named.imported : imported, hint, depth + 1);
+      if (found) return found;
+    }
+    if (imported !== 'default') return undefined;
     const exported = tf.functions.filter((f) => f.exported && /^[A-Z]/.test(f.name));
-    const fn = imp.imported === 'default' ? (exported.find((f) => f.name === name) ?? exported[0] ?? tf.functions.find((f) => /^[A-Z]/.test(f.name))) : tf.functions.find((f) => f.name === imp.imported);
+    const fn = exported.find((f) => f.name === hint) ?? exported[0] ?? tf.functions.find((f) => /^[A-Z]/.test(f.name));
     return fn ? { name: fn.name, file: target, line: fn.line } : undefined;
   };
 
